@@ -218,6 +218,8 @@ export function DetailItem({ label, value }: { label: string; value: ReactNode }
   );
 }
 
-export function PortalAction({ children, variant = "outline" }: { children: ReactNode; variant?: "default" | "outline" | "ghost" }) {
-  return <Button type="button" size="sm" variant={variant}>{children}</Button>;
+export function PortalAction({ children, onClick, variant = "outline" }: { children: ReactNode; onClick?: () => void; variant?: "default" | "outline" | "ghost" }) {
+  return <Button type="button" size="sm" variant={variant} onClick={onClick}>
+    {children}
+  </Button>;
 }

@@ -1,31 +1,12 @@
-import {
-  Activity,
-  CalendarCheck2,
-  CheckCircle2,
-  Clock3,
-  FilePlus2,
-  Pill,
-  Save,
-} from "lucide-react";
+"use client";
 
-import {
-  DetailGrid,
-  DetailItem,
-  MetricCard,
-  MetricGrid,
-  PortalAction,
-  PortalPageHeader,
-  PortalSection,
-  PortalTable,
-  PortalToolbar,
-  ProgressList,
-  StatusPill,
-} from "@/components/internal/portal-ui";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DoctorWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
 import { DoctorScheduleScreen } from "@/components/internal/trang-tong/doctor-schedule-screen";
+import { DetailGrid, DetailItem, MetricCard, MetricGrid, PortalAction, PortalPageHeader, PortalSection, PortalTable, PortalToolbar, ProgressList, StatusPill } from "../portal-ui";
+import { Activity, CalendarCheck2, CheckCircle2, Clock3, FilePlus2, Pill, Save } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@base-ui/react";
 
 export function ClinicalScreens({ slug }: { slug: string }) {
   switch (slug) {

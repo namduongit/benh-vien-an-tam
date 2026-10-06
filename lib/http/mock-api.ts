@@ -5,6 +5,8 @@ import { registerAuthRoutes } from "@/lib/mocks/routes/auth-routes";
 import { registerAppointmentRoutes } from "@/lib/mocks/routes/appointment-routes";
 import { registerDepartmentRoutes } from "@/lib/mocks/routes/department-routes";
 import { registerDoctorRoutes } from "@/lib/mocks/routes/doctor-routes";
+import { registerDoctorProfileRoutes } from "@/lib/mocks/routes/doctor-profile-routes";
+import { registerAvailableMedicineRoutes } from "@/lib/mocks/routes/available-medicine-routes";
 import { registerHospitalRoutes } from "@/lib/mocks/routes/hospital-routes";
 import { registerInternalClinicalRoutes } from "@/lib/mocks/routes/internal-clinical-routes";
 import { registerMedicalServiceRoutes } from "@/lib/mocks/routes/medical-service-routes";
@@ -24,6 +26,8 @@ export function attachMockApi(client: AxiosInstance) {
   registerHospitalRoutes(mock);
   registerInternalClinicalRoutes(mock);
   registerDoctorRoutes(mock);
+  registerDoctorProfileRoutes(mock);
+  registerAvailableMedicineRoutes(mock);
   registerMedicalServiceRoutes(mock);
   registerPatientRoutes(mock);
   registerPrescriptionRoutes(mock);
