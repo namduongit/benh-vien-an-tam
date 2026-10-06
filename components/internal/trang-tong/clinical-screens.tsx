@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DoctorWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
+import { DoctorScheduleScreen } from "@/components/internal/trang-tong/doctor-schedule-screen";
 
 export function ClinicalScreens({ slug }: { slug: string }) {
   switch (slug) {
@@ -74,27 +75,15 @@ function DoctorDashboard() {
   );
 }
 
-function DoctorScheduleScreen() {
-  return (
-    <div className="space-y-6">
-      <PortalPageHeader eyebrow="Ca được phân công" title="Lịch khám của tôi" description="Chỉ hiển thị lịch được phân công trực tiếp cho tài khoản bác sĩ hiện tại." actions={<><PortalAction>Đề xuất đổi lịch</PortalAction><PortalAction variant="default">In lịch hôm nay</PortalAction></>} />
-      <div className="grid gap-4 sm:grid-cols-3">
-        {["Thứ Tư\n23/09", "Thứ Năm\n24/09", "Thứ Sáu\n25/09"].map((date, index) => (
-          <button key={date} className={`whitespace-pre-line border p-4 text-left text-sm font-semibold ${index === 0 ? "border-primary bg-secondary text-primary" : "bg-white hover:bg-muted/40"}`}>{date}<span className="mt-2 block text-xs font-normal text-muted-foreground">{["12 ca khám", "9 ca khám", "7 ca khám"][index]}</span></button>
-        ))}
-      </div>
-      <PortalSection title="Thứ Tư, 23/09/2026" description="07:30 - 11:45 · Phòng 203">
-        <PortalToolbar placeholder="Tìm bệnh nhân hoặc mã y tế" filters={[{ label: "Tất cả trạng thái", options: ["Đã xác nhận", "Đã check-in", "Hoàn thành"] }]} />
-        <PortalTable caption="Lịch khám của bác sĩ" columns={["Giờ", "Bệnh nhân", "Loại", "Phòng", "Trạng thái"]} rows={scheduleRows} />
-      </PortalSection>
-    </div>
-  );
-}
-
 function AssignedCasesScreen() {
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Ca đang xử lý · 09:30" title="Nguyễn Thị Lan" description="Mã y tế BN-10248 · Nữ · Lịch được phân công trực tiếp cho bạn." actions={<><PortalAction>Hủy ca có lý do</PortalAction><PortalAction variant="default"><CheckCircle2 />Hoàn thành ca</PortalAction></>} />
+      <PortalPageHeader eyebrow="Ca đang xử lý · 09:30" title="Nguyễn Thị Lan" description="Mã y tế BN-10248 · Nữ · Lịch được phân công trực tiếp cho bạn." actions={
+        <>
+        <PortalAction>Hủy ca</PortalAction>
+        <PortalAction variant="default"><CheckCircle2 />Hoàn thành ca</PortalAction>
+        </>
+      } />
       <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-6">
           <PortalSection title="Thông tin lượt khám">

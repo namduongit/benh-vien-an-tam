@@ -165,7 +165,8 @@ function PortalNavigation({
           ) : null}
           {group.items.map((item) => {
             const Icon = portalIcons[item.icon];
-            const active = pathname === item.href;
+            const active =
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
             const link = (
               <Link
                 href={item.href}
