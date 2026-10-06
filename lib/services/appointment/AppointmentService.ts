@@ -13,6 +13,7 @@ import type {
   BookingContext,
   BookingType,
   CreateAppointmentRequest,
+  CreateWalkInAppointmentRequest,
   RescheduleAppointmentRequest,
 } from "@/types/appointments";
 
@@ -108,6 +109,41 @@ export class AppointmentService {
         ...response.data,
         Data: hydrateAppointment(response.data.Data),
       };
+    } catch (error) {
+      throw toAppointmentError(error);
+    }
+  }
+
+  async createWalkIn(request: CreateWalkInAppointmentRequest) {
+    try {
+      const response = await httpClient.post<ApiResponse<Appointment>>(
+        "/appointments/walk-in",
+        request,
+      );
+      return {
+        ...response.data,
+        Data: hydrateAppointment(response.data.Data),
+      };
+    } catch (error) {
+      throw toAppointmentError(error);
+    }
+  }
+
+  async getWalkInAvailability(
+    query: {
+      type: BookingType;
+      targetUuid: string;
+      hospitalUuid: string;
+      date: string;
+    },
+    signal?: AbortSignal,
+  ) {
+    try {
+      const response = await httpClient.get<ApiResponse<Availability>>(
+        "/appointments/walk-in/availability",
+        { params: query, signal },
+      );
+      return response.data;
     } catch (error) {
       throw toAppointmentError(error);
     }

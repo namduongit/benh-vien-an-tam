@@ -331,12 +331,14 @@ type AppointmentBase = {
   AppointmentDate: Date;
   TimeSlot: Guid;
   Status: AppointmentStatus;
-  PatientUuid: Guid;
+  PatientUuid: Guid | null;
   HospitalUuid: Guid;
   RoomUuid: Guid | null;
   DoctorNote: string;
   TotalPrice: number;
   IsPaid: boolean;
+  IsWalkIn: boolean;
+  GuestPhone: string | null;
   CreatedAt: Date;
   UpdatedAt: Date;
   DeletedAt: Date;

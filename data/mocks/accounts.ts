@@ -89,4 +89,15 @@ export const mockAccounts: Account[] = [
     UpdatedAt: new Date("2026-08-15T00:00:00.000Z"),
     DeletedAt: new Date(0),
   },
+  {
+    Uuid: "8c2f1d4a-77b3-4f4e-9c1a-1f7b6c5d4e02",
+    Phone: "0935000001",
+    Password: "Staff@123",
+    RoleUuid: ROLE_UUIDS.STAFF,
+    Status: BaseStatus.Active,
+    HospitalUuid: "a4a0a61f-577d-48cb-94b9-c9ce85554b11",
+    CreatedAt: new Date("2025-06-01T00:00:00.000Z"),
+    UpdatedAt: new Date("2026-08-20T00:00:00.000Z"),
+    DeletedAt: new Date(0),
+  },
 ];
