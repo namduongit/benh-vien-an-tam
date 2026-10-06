@@ -9,6 +9,7 @@ import {
   Clock3,
   CreditCard,
   Eye,
+  Filter,
   PackageCheck,
   Plus,
   ReceiptText,
@@ -17,8 +18,9 @@ import {
   Trash2,
   UserCheck,
   UsersRound,
+  Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   DetailGrid,
@@ -33,9 +35,15 @@ import {
   ProgressList,
   StatusPill,
 } from "@/components/internal/portal-ui";
+import { EmptyState } from "@/components/shared/data-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { mockAppointments } from "@/data/mocks/appointments";
+import { mockHospitals } from "@/data/mocks/hospitals";
+import { mockRooms } from "@/data/mocks/rooms";
+import { formatDate } from "@/lib/format";
+import { AppointmentStatus, RoomStatus } from "@/types/models";
 
 export function ReceptionScreens({ slug }: { slug: string }) {
   switch (slug) {
@@ -136,25 +144,242 @@ function ReceptionScreen() {
 }
 
 function StaffRoomsScreen() {
-  const rooms = [
-    ["P.101", "Nội tổng quát", "Khả dụng", "0", "Sẵn sàng"],
-    ["P.203", "Tim mạch", "Đang sử dụng", "2", "BS. Nguyễn Hoàng Minh"],
-    ["P.205", "Nhi khoa", "Đang sử dụng", "3", "BS. Phạm Ngọc Anh"],
-    ["P.307", "Chẩn đoán hình ảnh", "Bảo trì", "0", "Dự kiến xong 14:00"],
-    ["P.108", "Xét nghiệm", "Khả dụng", "1", "Sẵn sàng"],
-    ["P.210", "Cơ xương khớp", "Đang sử dụng", "4", "BS. Trần Thanh Vũ"],
-  ];
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | RoomStatus>("all");
+  const [hospitalFilter, setHospitalFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 6;
+
+  // Ghép thông tin cơ sở và số lượt đang chờ cho mỗi phòng.
+  const roomsWithDetails = useMemo(() => {
+    const hospitalNameByUuid = new Map(
+      mockHospitals.map((hospital) => [hospital.Uuid, hospital.Name] as const),
+    );
+    const waitingByRoom = new Map<string, number>();
+    for (const appointment of mockAppointments) {
+      if (
+        !appointment.RoomUuid ||
+        appointment.DeletedAt.getTime() !== 0 ||
+        appointment.Status === AppointmentStatus.Cancelled ||
+        appointment.Status === AppointmentStatus.Done
+      ) {
+        continue;
+      }
+      waitingByRoom.set(
+        appointment.RoomUuid,
+        (waitingByRoom.get(appointment.RoomUuid) ?? 0) + 1,
+      );
+    }
+    return mockRooms.map((room) => ({
+      ...room,
+      HospitalName: hospitalNameByUuid.get(room.HospitalUuid) ?? "Chưa gán",
+      Waiting: waitingByRoom.get(room.Uuid) ?? 0,
+    }));
+  }, []);
+
+  const filteredRooms = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase("vi-VN");
+    return roomsWithDetails.filter((room) => {
+      if (statusFilter !== "all" && room.Status !== statusFilter) return false;
+      if (hospitalFilter !== "all" && room.HospitalUuid !== hospitalFilter) return false;
+      if (keyword) {
+        const haystack = `${room.Name} ${room.HospitalName}`.toLocaleLowerCase("vi-VN");
+        if (!haystack.includes(keyword)) return false;
+      }
+      return true;
+    });
+  }, [hospitalFilter, roomsWithDetails, search, statusFilter]);
+
+  // Khi bộ lọc thay đổi, đưa về trang đầu thông qua bộ đếm an toàn.
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const paginatedRooms = filteredRooms.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+
+  const counts = useMemo(() => {
+    return {
+      total: filteredRooms.length,
+      available: filteredRooms.filter((room) => room.Status === RoomStatus.Available).length,
+      occupied: filteredRooms.filter((room) => room.Status === RoomStatus.Occupied).length,
+      maintenance: filteredRooms.filter((room) => room.Status === RoomStatus.Maintenance).length,
+      waiting: filteredRooms.reduce((sum, room) => sum + room.Waiting, 0),
+    };
+  }, [filteredRooms]);
+
+  const isFiltered = Boolean(search.trim()) || statusFilter !== "all" || hospitalFilter !== "all";
+
+  function resetFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setHospitalFilter("all");
+    setPage(1);
+  }
+
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Sơ đồ vận hành" title="Tình trạng phòng khám" description="Theo dõi phòng khả dụng, phòng đang sử dụng và hàng chờ hiện tại." />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {rooms.map(([room, department, status, waiting, note]) => (
-          <article key={room} className="border bg-white p-5">
-            <div className="flex items-start justify-between"><div><p className="text-lg font-bold text-[#173b57]">{room}</p><p className="mt-1 text-sm text-muted-foreground">{department}</p></div><StatusPill tone={status === "Khả dụng" ? "green" : status === "Bảo trì" ? "amber" : "blue"}>{status}</StatusPill></div>
-            <div className="mt-5 flex items-end justify-between border-t pt-4"><div><p className="text-xs text-muted-foreground">Đang chờ</p><p className="mt-1 text-xl font-bold">{waiting}</p></div><p className="max-w-36 text-right text-xs leading-5 text-muted-foreground">{note}</p></div>
-          </article>
-        ))}
-      </div>
+      <PortalPageHeader
+        eyebrow="Sơ đồ vận hành"
+        title="Tình trạng phòng khám"
+        description="Theo dõi phòng khả dụng, phòng đang sử dụng và hàng chờ hiện tại để tiếp nhận nhanh hơn."
+      />
+
+      <MetricGrid>
+        <MetricCard
+          label="Tổng phòng đang xem"
+          value={String(counts.total)}
+          detail={isFiltered ? `Đang lọc trên ${roomsWithDetails.length} phòng` : `${mockRooms.length} phòng đang hoạt động`}
+          icon={<BedDouble className="size-5" />}
+          tone="blue"
+        />
+        <MetricCard
+          label="Khả dụng"
+          value={String(counts.available)}
+          detail="Sẵn sàng tiếp nhận lượt mới"
+          icon={<CheckCircle2 className="size-5" />}
+          tone="green"
+        />
+        <MetricCard
+          label="Đang sử dụng"
+          value={String(counts.occupied)}
+          detail={`${counts.waiting} lượt đang chờ trong khu vực`}
+          icon={<UsersRound className="size-5" />}
+          tone="cyan"
+        />
+        <MetricCard
+          label="Bảo trì"
+          value={String(counts.maintenance)}
+          detail="Cần thông báo cho nhân sự kỹ thuật"
+          icon={<Wrench className="size-5" />}
+          tone="amber"
+        />
+      </MetricGrid>
+
+      <PortalSection
+        title="Danh sách phòng khám"
+        description={
+          filteredRooms.length
+            ? `${filteredRooms.length} phòng khớp với bộ lọc, hiển thị ${paginatedRooms.length} phòng trên trang ${safePage}/${totalPages}.`
+            : "Không có phòng nào khớp với bộ lọc hiện tại."
+        }
+        action={
+          isFiltered ? (
+            <Button type="button" size="sm" variant="outline" onClick={resetFilters}>
+              <Filter aria-hidden="true" className="size-4" />
+              Đặt lại bộ lọc
+            </Button>
+          ) : null
+        }
+      >
+        <div className="flex flex-col gap-3 border-b bg-[#fbfdfe] p-4 lg:flex-row lg:items-end">
+          <label className="min-w-0 flex-1 lg:max-w-sm">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tìm kiếm</span>
+            <div className="relative">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm theo tên phòng hoặc tên cơ sở"
+                className="h-9 pl-9"
+                aria-label="Tìm theo tên phòng hoặc tên cơ sở"
+              />
+            </div>
+          </label>
+          <label className="lg:w-52">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Trạng thái</span>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as "all" | RoomStatus)}
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              aria-label="Lọc theo trạng thái phòng"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value={RoomStatus.Available}>Khả dụng</option>
+              <option value={RoomStatus.Occupied}>Đang sử dụng</option>
+              <option value={RoomStatus.Maintenance}>Bảo trì</option>
+            </select>
+          </label>
+          <label className="lg:w-64">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cơ sở y tế</span>
+            <select
+              value={hospitalFilter}
+              onChange={(event) => setHospitalFilter(event.target.value)}
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              aria-label="Lọc theo cơ sở y tế"
+            >
+              <option value="all">Tất cả cơ sở</option>
+              {mockHospitals.map((hospital) => (
+                <option key={hospital.Uuid} value={hospital.Uuid}>
+                  {hospital.Name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {paginatedRooms.length ? (
+          <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+            {paginatedRooms.map((room) => (
+              <article key={room.Uuid} className="flex h-full flex-col border bg-white p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-lg font-bold text-[#173b57]">{room.Name}</p>
+                    <p className="mt-1 break-words text-sm text-muted-foreground">{room.HospitalName}</p>
+                  </div>
+                  {room.Status === RoomStatus.Available ? (
+                    <StatusPill tone="green">Khả dụng</StatusPill>
+                  ) : room.Status === RoomStatus.Occupied ? (
+                    <StatusPill tone="blue">Đang sử dụng</StatusPill>
+                  ) : (
+                    <StatusPill tone="amber">Bảo trì</StatusPill>
+                  )}
+                </div>
+                <div className="mt-5 flex flex-1 items-end justify-between gap-3 border-t pt-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Đang chờ</p>
+                    <p className="mt-1 text-xl font-bold text-[#173b57]">{room.Waiting}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Cập nhật</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{formatDate(room.UpdatedAt)}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            message="Không có phòng nào khớp với bộ lọc hiện tại."
+            action={
+              <Button type="button" variant="outline" onClick={resetFilters}>
+                Đặt lại bộ lọc
+              </Button>
+            }
+          />
+        )}
+
+        {totalPages > 1 ? (
+          <nav aria-label="Phân trang phòng khám" className="flex flex-col gap-3 border-t bg-[#fbfdfe] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Hiển thị <strong>{(safePage - 1) * PAGE_SIZE + 1}</strong>-
+              <strong>{Math.min(safePage * PAGE_SIZE, filteredRooms.length)}</strong> trên tổng số{" "}
+              <strong>{filteredRooms.length}</strong> phòng
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(value - 1, 1))}>
+                Trước
+              </Button>
+              <span className="text-sm font-medium text-[#173b57]">
+                Trang {safePage} / {totalPages}
+              </span>
+              <Button type="button" size="sm" variant="outline" disabled={safePage >= totalPages} onClick={() => setPage((value) => Math.min(value + 1, totalPages))}>
+                Sau
+              </Button>
+            </div>
+          </nav>
+        ) : null}
+      </PortalSection>
     </div>
   );
 }
