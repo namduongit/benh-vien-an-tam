@@ -57,6 +57,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
+builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
 
 // Config Postges
 builder.Services.AddDbContext<DBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
