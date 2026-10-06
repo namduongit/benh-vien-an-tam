@@ -366,7 +366,14 @@ export type AppointmentMedicalService = {
   AppointmentUuid: Guid;
   MedicalServiceUuid: Guid;
   Price: number;
+  Description: string;
+  Status: AppointmentMedicalServiceStatus;
 };
+
+export enum AppointmentMedicalServiceStatus {
+  InProgress = "InProgress",
+  Completed = "Completed",
+}
 
 export enum PermissionAction {
   Read = "Read",
