@@ -69,7 +69,7 @@ export function registerAuthRoutes(mock: AxiosMockAdapter) {
 
   mock.onPost("/auth/register").reply((config) => {
     const request = parseBody<RegisterPatientRequest>(config.data);
-    const phone = normalizePhone(request.Account.Phone);
+    const phone = normalizePhone(request.Phone);
 
     if (
       mockAccounts.some(
@@ -90,7 +90,7 @@ export function registerAuthRoutes(mock: AxiosMockAdapter) {
     const account: Account = {
       Uuid: accountUuid,
       Phone: phone,
-      Password: request.Account.Password,
+      Password: request.Password,
       RoleUuid: ROLE_UUIDS.PATIENT,
       Status: BaseStatus.Active,
       HospitalUuid: null,
@@ -101,11 +101,11 @@ export function registerAuthRoutes(mock: AxiosMockAdapter) {
     const profile = {
       Uuid: crypto.randomUUID(),
       Avatar: "",
-      Name: request.PatientProfile.Name.trim(),
-      Gender: request.PatientProfile.Gender,
-      Birthdate: new Date(request.PatientProfile.Birthdate),
+      Name: request.Name.trim(),
+      Gender: request.Gender,
+      Birthdate: new Date(`${request.Birthdate}T00:00:00`),
       MedicalCode: `BN${Date.now().toString().slice(-8)}`,
-      Email: request.PatientProfile.Email.trim().toLowerCase(),
+      Email: request.Email.trim().toLowerCase(),
       AccountUuid: accountUuid,
     };
 

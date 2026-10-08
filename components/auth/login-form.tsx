@@ -9,6 +9,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/toast/toast-context";
 import { normalizePhone, validateLogin, type AuthFieldErrors } from "@/lib/auth/validation";
 import { AuthServiceError } from "@/lib/services/auth/AuthService";
 
@@ -19,6 +20,7 @@ type LoginFormProps = {
 
 export function LoginForm({ returnUrl, registered }: LoginFormProps) {
   const { login } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -44,14 +46,17 @@ export function LoginForm({ returnUrl, registered }: LoginFormProps) {
     setIsSubmitting(true);
     try {
       await login(credentials);
+      toast.success("Đăng nhập thành công", "Chào mừng bạn quay lại An Tâm.");
       router.replace(returnUrl);
       router.refresh();
     } catch (error) {
       if (error instanceof AuthServiceError) {
         setServerError(error.message);
         setErrors(error.fieldErrors);
+        toast.error("Đăng nhập thất bại", error.message);
       } else {
         setServerError("Đã xảy ra lỗi. Vui lòng thử lại.");
+        toast.error("Đăng nhập thất bại", "Đã xảy ra lỗi. Vui lòng thử lại.");
       }
     } finally {
       setIsSubmitting(false);

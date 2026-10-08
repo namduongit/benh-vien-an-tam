@@ -1,7 +1,9 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using api.Config;
 using api.Lib;
 using api.Lib.Setting;
+using api.Middleware;
 using api.Service;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +14,17 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins(builder.Configuration["FrontendUrl"] ?? "http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials());
+});
 
 // Config Momo 
 builder.Services.Configure<MomoSetting>(
@@ -57,8 +69,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
-builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
+// builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
+// builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
 
 // Config Postges
 builder.Services.AddDbContext<DBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -72,6 +84,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<ExceptionHandler>();
+
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 

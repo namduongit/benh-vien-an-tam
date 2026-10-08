@@ -1,5 +1,6 @@
 using api.Config;
 using api.Config.Type;
+using api.Contract;
 using api.Contract.Auth;
 using api.Lib;
 using api.Model;
@@ -27,17 +28,17 @@ public sealed class AuthService(
 
         if (await dbContext.Accounts.AnyAsync(account => account.Phone == phone, cancellationToken))
         {
-            errors[nameof(request.Phone)] = ["So dien thoai da duoc su dung."];
+            errors[nameof(request.Phone)] = ["Số điện thoại đã được sử dụng"];
         }
 
         if (await dbContext.PatientProfiles.AnyAsync(profile => profile.Email == email, cancellationToken))
         {
-            errors[nameof(request.Email)] = ["Email da duoc su dung."];
+            errors[nameof(request.Email)] = ["Email đã được sử dụng"];
         }
 
         if (errors.Count > 0)
         {
-            return new RegisterResult(null, null, null, errors, false);
+            throw new DuplicateException(errors);
         }
 
         var now = DateTime.UtcNow;
@@ -76,13 +77,13 @@ public sealed class AuthService(
         catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return new RegisterResult(null, null, null, errors, true);
+            throw new AppException();
         }
 
-        return new RegisterResult(accountUuid, profileUuid, email, errors, false);
+        return new RegisterResult(accountUuid, profileUuid, email);
     }
 
-    public async Task<LoginResult?> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
+    public async Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {
         var phone = NormalizePhone(request.Phone);
         var account = await dbContext.Accounts
@@ -90,9 +91,10 @@ public sealed class AuthService(
             .SingleOrDefaultAsync(item => item.Phone == phone, cancellationToken);
 
         if (account is null || account.DeletedAt.HasValue || account.Status != BaseStatus.Active ||
+            account.RoleUuid != AuthConstants.PatientRoleUuid ||
             !passwordHasher.Verify(request.Password, account.Password))
         {
-            return null;
+            throw new AppException(401, "So dien thoai hoac mat khau khong dung.");
         }
 
         var profile = await dbContext.PatientProfiles
@@ -100,18 +102,72 @@ public sealed class AuthService(
             .SingleOrDefaultAsync(item => item.AccountUuid == account.Uuid, cancellationToken);
         if (profile is null)
         {
-            return null;
+            throw new AppException(401, "So dien thoai hoac mat khau khong dung.");
         }
 
+        return CreateLoginResult(account, profile);
+    }
+
+    public async Task<LoginResult> RefreshAsync(string refreshToken, CancellationToken cancellationToken)
+    {
+        var accountUuid = jwtService.ValidateToken(refreshToken, "refresh");
+        if (!accountUuid.HasValue)
+        {
+            throw new AppException(401, "Refresh token không hợp lệ hoặc đã hết hạn.");
+        }
+
+        var account = await dbContext.Accounts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Uuid == accountUuid.Value, cancellationToken);
+        if (account is null || account.DeletedAt.HasValue || account.Status != BaseStatus.Active ||
+            account.RoleUuid != AuthConstants.PatientRoleUuid)
+        {
+            throw new AppException(401, "Phiên đăng nhập không còn hợp lệ.");
+        }
+
+        var profile = await dbContext.PatientProfiles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.AccountUuid == account.Uuid, cancellationToken);
+        if (profile is null)
+        {
+            throw new AppException(401, "Phiên đăng nhập không còn hợp lệ.");
+        }
+
+        return CreateLoginResult(account, profile);
+    }
+
+    private LoginResult CreateLoginResult(Account account, PatientProfile profile)
+    {
         var issuedAt = DateTimeOffset.UtcNow;
         var accessExpiresAt = issuedAt.AddMinutes(_jwtOptions.AccessTokenMinutes);
         var refreshExpiresAt = issuedAt.AddDays(_jwtOptions.RefreshTokenDays);
-        var accessToken = jwtService.CreateToken(CreatePayload(account.Uuid, profile.Email, issuedAt, accessExpiresAt));
-        var refreshToken = jwtService.CreateToken(CreatePayload(account.Uuid, profile.Email, issuedAt, refreshExpiresAt));
+        var accessToken = jwtService.CreateToken(
+            CreatePayload(account.Uuid, profile.Email, issuedAt, accessExpiresAt),
+            "access");
+        var refreshToken = jwtService.CreateToken(
+            CreatePayload(account.Uuid, profile.Email, issuedAt, refreshExpiresAt),
+            "refresh");
 
         return new LoginResult(
-            account.Uuid,
-            profile.Email,
+            new AuthSessionResult(
+                new AuthAccountResult(
+                    account.Uuid,
+                    account.Phone,
+                    account.RoleUuid!.Value,
+                    account.Status,
+                    account.HospitalUuid,
+                    account.CreatedAt,
+                    account.UpdatedAt,
+                    account.DeletedAt),
+                new AuthPatientProfileResult(
+                    profile.Uuid,
+                    profile.AccountUuid!.Value,
+                    profile.Avatar,
+                    profile.Name,
+                    profile.Gender,
+                    profile.Birthdate,
+                    profile.MedicalCode,
+                    profile.Email)),
             issuedAt,
             accessExpiresAt,
             refreshExpiresAt,
@@ -138,15 +194,41 @@ public sealed class AuthService(
 public sealed record RegisterResult(
     Guid? AccountUuid,
     Guid? PatientProfileUuid,
-    string? Email,
-    IReadOnlyDictionary<string, string[]> Errors,
-    bool IsConflict);
+    string? Email
+);
 
 public sealed record LoginResult(
-    Guid Uuid,
-    string Email,
+    AuthSessionResult Session,
     DateTimeOffset IssuedAt,
     DateTimeOffset AccessExpiresAt,
     DateTimeOffset RefreshExpiresAt,
     string AccessToken,
-    string RefreshToken);
+    string RefreshToken
+);
+
+public sealed record AuthSessionResult(
+    AuthAccountResult Account,
+    AuthPatientProfileResult PatientProfile
+);
+
+public sealed record AuthAccountResult(
+    Guid Uuid,
+    string Phone,
+    Guid RoleUuid,
+    BaseStatus Status,
+    Guid? HospitalUuid,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    DateTime? DeletedAt
+);
+
+public sealed record AuthPatientProfileResult(
+    Guid Uuid,
+    Guid AccountUuid,
+    string Avatar,
+    string Name,
+    Gender Gender,
+    DateTime Birthdate,
+    string MedicalCode,
+    string Email
+);

@@ -1,4 +1,4 @@
-import type { Account, PatientProfile } from "@/types/models";
+import type { Account, Gender, PatientProfile } from "@/types/models";
 
 export type PublicAccount = Omit<Account, "Password">;
 
@@ -10,11 +10,13 @@ export type AuthSession = {
 export type LoginRequest = Pick<Account, "Phone" | "Password">;
 
 export type RegisterPatientRequest = {
-  Account: Pick<Account, "Phone" | "Password">;
-  PatientProfile: Pick<
-    PatientProfile,
-    "Name" | "Gender" | "Birthdate" | "Email"
-  >;
+  Name: string;
+  Gender: Gender;
+  Birthdate: string;
+  Email: string;
+  Phone: string;
+  Password: string;
+  ConfirmPassword: string;
 };
 
 export type AuthField =
@@ -23,9 +25,12 @@ export type AuthField =
   | "Name"
   | "Gender"
   | "Birthdate"
-  | "Email";
+  | "Email"
+  | "ConfirmPassword";
 
 export type AuthErrorResponse = {
   Message?: string;
-  Errors?: Partial<Record<AuthField, string>>;
+  Errors?: Partial<Record<AuthField, string | string[]>>;
+  message?: string;
+  errors?: Partial<Record<AuthField, string | string[]>>;
 };
