@@ -21,6 +21,7 @@ import {
   validateRegistration,
   type AuthFieldErrors,
 } from "@/lib/auth/validation";
+import { genderOptions } from "@/lib/auth/options";
 import { AuthServiceError } from "@/lib/services/auth/AuthService";
 import type { RegisterPatientRequest } from "@/types/auth";
 import { Gender } from "@/types/models";
@@ -43,18 +44,15 @@ export function RegisterForm({ returnUrl }: { returnUrl: string }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const request: RegisterPatientRequest = {
-      Account: {
-        Phone: normalizePhone(phone),
-        Password: password,
-      },
-      PatientProfile: {
-        Name: name,
-        Gender: gender as Gender,
-        Birthdate: new Date(`${birthdate}T00:00:00`),
-        Email: email,
-      },
+      Name: name,
+      Gender: gender as Gender,
+      Birthdate: birthdate,
+      Email: email,
+      Phone: normalizePhone(phone),
+      Password: password,
+      ConfirmPassword: confirmPassword,
     };
-    const nextErrors = validateRegistration(request, confirmPassword);
+    const nextErrors = validateRegistration(request);
 
     setErrors(nextErrors);
     setServerError("");
@@ -114,6 +112,7 @@ export function RegisterForm({ returnUrl }: { returnUrl: string }) {
         <div className="space-y-2">
           <Label htmlFor="gender">Giới tính</Label>
           <Select
+            items={genderOptions}
             value={gender || null}
             onValueChange={(value) => setGender(value as Gender)}
             disabled={isSubmitting}
@@ -127,9 +126,11 @@ export function RegisterForm({ returnUrl }: { returnUrl: string }) {
               <SelectValue placeholder="Chọn giới tính" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={Gender.Female}>Nữ</SelectItem>
-              <SelectItem value={Gender.Male}>Nam</SelectItem>
-              <SelectItem value={Gender.Other}>Khác</SelectItem>
+              {genderOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {errors.Gender ? (
