@@ -20,7 +20,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         [FromQuery] string? search = null,
         CancellationToken cancellationToken = default)
     {
-        pageSize = Math.Min(pageSize, 100);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
         var query = dbContext.Hospitals.Where(x => x.DeletedAt == null);
 
@@ -317,15 +317,32 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] RoomStatus? status = null,
+        [FromQuery] string? search = null,
+        [FromQuery] bool includeDeleted = false,
         CancellationToken cancellationToken = default)
     {
+        var hospitalExists = await dbContext.Hospitals
+            .AnyAsync(x => x.Uuid == id && x.DeletedAt == null, cancellationToken);
+        if (!hospitalExists)
+            return NotFound(new { message = "Hospital not found", error = "Resource does not exist" });
+
+        page = Math.Max(page, 1);
         pageSize = Math.Min(pageSize, 100);
 
-        var query = dbContext.Rooms.Where(x => x.HospitalUuid == id && x.DeletedAt == null);
+        var query = dbContext.Rooms.Where(x =>
+            x.HospitalUuid == id && (includeDeleted || x.DeletedAt == null));
 
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
+        }
+
+        var normalizedSearch = search?.Trim().ToLower();
+        if (!string.IsNullOrEmpty(normalizedSearch))
+        {
+            query = query.Where(x =>
+                x.Name.ToLower().Contains(normalizedSearch) ||
+                x.Uuid.ToString().Contains(normalizedSearch));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -340,7 +357,8 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
                 Status = x.Status.ToString(),
                 HospitalUuid = x.HospitalUuid,
                 CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
+                UpdatedAt = x.UpdatedAt,
+                DeletedAt = x.DeletedAt
             })
             .ToListAsync(cancellationToken);
 
@@ -375,7 +393,8 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Status = room.Status.ToString(),
             HospitalUuid = room.HospitalUuid,
             CreatedAt = room.CreatedAt,
-            UpdatedAt = room.UpdatedAt
+            UpdatedAt = room.UpdatedAt,
+            DeletedAt = room.DeletedAt
         };
 
         return Ok(new { message = "Fetched successfully", data = response });
@@ -388,6 +407,17 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         CreateRoomRequest request,
         CancellationToken cancellationToken = default)
     {
+        var hospital = await dbContext.Hospitals
+            .Where(x => x.Uuid == id && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (hospital is null)
+            return NotFound(new { message = "Hospital not found", error = "Resource does not exist" });
+
+        var activeRoomCount = await dbContext.Rooms
+            .CountAsync(x => x.HospitalUuid == id && x.DeletedAt == null, cancellationToken);
+        if (activeRoomCount >= hospital.NumberOfRoom)
+            return Conflict(new { message = "Hospital room capacity reached", error = "ROOM_CAPACITY_REACHED" });
+
         var room = new Room
         {
             Uuid = Guid.NewGuid(),
@@ -408,7 +438,8 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Status = room.Status.ToString(),
             HospitalUuid = room.HospitalUuid,
             CreatedAt = room.CreatedAt,
-            UpdatedAt = room.UpdatedAt
+            UpdatedAt = room.UpdatedAt,
+            DeletedAt = room.DeletedAt
         };
 
         return StatusCode(StatusCodes.Status201Created,
@@ -430,6 +461,22 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         if (room is null)
             return NotFound(new { message = "Room not found", error = "Resource does not exist" });
 
+        if (request.Status == RoomStatus.Maintenance)
+        {
+            var hasActiveAppointments = await dbContext.Appointments.AnyAsync(
+                x => x.RoomUuid == roomId &&
+                     x.HospitalUuid == id &&
+                     x.DeletedAt == null &&
+                     (x.Status == AppointmentStatus.Pending || x.Status == AppointmentStatus.Approved),
+                cancellationToken);
+            if (hasActiveAppointments)
+                return Conflict(new
+                {
+                    message = "Room has pending or approved appointments",
+                    error = "ROOM_HAS_ACTIVE_APPOINTMENTS"
+                });
+        }
+
         room.Name = request.Name ?? room.Name;
         if (request.Status.HasValue)
         {
@@ -446,7 +493,8 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Status = room.Status.ToString(),
             HospitalUuid = room.HospitalUuid,
             CreatedAt = room.CreatedAt,
-            UpdatedAt = room.UpdatedAt
+            UpdatedAt = room.UpdatedAt,
+            DeletedAt = room.DeletedAt
         };
 
         return Ok(new { message = "Updated successfully", data = response });
@@ -463,9 +511,66 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         if (room is null)
             return NotFound(new { message = "Room not found", error = "Resource does not exist" });
 
+        var hasActiveAppointments = await dbContext.Appointments.AnyAsync(
+            x => x.RoomUuid == roomId &&
+                 x.HospitalUuid == id &&
+                 x.DeletedAt == null &&
+                 (x.Status == AppointmentStatus.Pending || x.Status == AppointmentStatus.Approved),
+            cancellationToken);
+        if (hasActiveAppointments)
+            return Conflict(new
+            {
+                message = "Room has pending or approved appointments",
+                error = "ROOM_HAS_ACTIVE_APPOINTMENTS"
+            });
+
         room.DeletedAt = DateTime.UtcNow;
+        room.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return NoContent();
+    }
+
+    [HttpPost("{id}/rooms/{roomId}/restore")]
+    [Authorize]
+    public async Task<IActionResult> RestoreRoom(
+        Guid id,
+        Guid roomId,
+        CancellationToken cancellationToken = default)
+    {
+        var room = await dbContext.Rooms
+            .Where(x => x.Uuid == roomId && x.HospitalUuid == id && x.DeletedAt != null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (room is null)
+            return NotFound(new { message = "Deleted room not found", error = "Resource does not exist" });
+
+        var hospital = await dbContext.Hospitals
+            .Where(x => x.Uuid == id && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (hospital is null)
+            return NotFound(new { message = "Hospital not found", error = "Resource does not exist" });
+
+        var activeRoomCount = await dbContext.Rooms
+            .CountAsync(x => x.HospitalUuid == id && x.DeletedAt == null, cancellationToken);
+        if (activeRoomCount >= hospital.NumberOfRoom)
+            return Conflict(new { message = "Hospital room capacity reached", error = "ROOM_CAPACITY_REACHED" });
+
+        room.DeletedAt = null;
+        room.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = new RoomResponse
+        {
+            Uuid = room.Uuid,
+            Name = room.Name,
+            Status = room.Status.ToString(),
+            HospitalUuid = room.HospitalUuid,
+            CreatedAt = room.CreatedAt,
+            UpdatedAt = room.UpdatedAt,
+            DeletedAt = room.DeletedAt
+        };
+
+        return Ok(new { message = "Room restored successfully", data = response });
     }
 }

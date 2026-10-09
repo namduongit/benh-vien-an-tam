@@ -1,14 +1,25 @@
 import type AxiosMockAdapter from "axios-mock-adapter";
 
 import { mockHospitals } from "@/data/mocks/hospitals";
+import { mockAppointments } from "@/data/mocks/appointments";
 import { mockRooms } from "@/data/mocks/rooms";
-import { getPositiveIntegerParam, getStringParam } from "@/lib/mocks/query-utils";
-import { RoomStatus, type Room } from "@/types/models";
+import {
+  getPositiveIntegerParam,
+  getStringParam,
+  matchesKeyword,
+} from "@/lib/mocks/query-utils";
+import {
+  AppointmentStatus,
+  RoomStatus,
+  type Room,
+} from "@/types/models";
 
 type RoomCreatePayload = {
   name?: unknown;
   status?: unknown;
 };
+
+type RoomQueryParams = Record<string, unknown> | undefined;
 
 const rooms: Room[] = mockRooms.map((room) => ({
   ...room,
@@ -23,6 +34,21 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
     if (!hospitalExists(hospitalUuid)) return notFound("Hospital not found");
 
     const status = getStringParam(config.params, "status");
+    const search = getStringParam(config.params, "search");
+    const rawIncludeDeleted = config.params?.includeDeleted;
+    if (
+      rawIncludeDeleted !== undefined &&
+      rawIncludeDeleted !== true &&
+      rawIncludeDeleted !== false &&
+      rawIncludeDeleted !== "true" &&
+      rawIncludeDeleted !== "false"
+    ) {
+      return [400, { message: "includeDeleted must be true or false." }];
+    }
+    if (status && !isRoomStatus(status)) {
+      return [400, { message: "Room status is invalid." }];
+    }
+    const includeDeleted = getBooleanParam(config.params, "includeDeleted");
     const page = getPositiveIntegerParam(config.params, "page", 1);
     const pageSize = Math.min(
       getPositiveIntegerParam(config.params, "pageSize", 20),
@@ -32,8 +58,9 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
       .filter(
         (room) =>
           room.HospitalUuid === hospitalUuid &&
-          room.DeletedAt.getTime() === 0 &&
-          (!status || room.Status === status),
+          (includeDeleted || room.DeletedAt.getTime() === 0) &&
+          (!status || room.Status === status) &&
+          matchesKeyword(search, room.Name, room.Uuid),
       )
       .sort((left, right) => right.CreatedAt.getTime() - left.CreatedAt.getTime());
     const totalCount = filtered.length;
@@ -68,11 +95,18 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
 
   mock.onPost(/^\/hospitals\/[^/]+\/rooms$/).reply((config) => {
     const hospitalUuid = getHospitalUuid(config.url);
-    if (!hospitalExists(hospitalUuid)) return notFound("Hospital not found");
+    const hospital = mockHospitals.find(
+      (item) => item.Uuid === hospitalUuid && item.DeletedAt.getTime() === 0,
+    );
+    if (!hospital) return notFound("Hospital not found");
 
     const request = parsePayload(config.data);
     if (!isValidRoomPayload(request, true)) {
       return [400, { message: "Room name must contain 1 to 100 characters." }];
+    }
+
+    if (getActiveRoomCount(hospitalUuid) >= hospital.NumberOfRoom) {
+      return capacityConflict();
     }
 
     const now = new Date();
@@ -111,6 +145,18 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
         return [400, { message: "Room name must contain 1 to 100 characters." }];
       }
 
+      if (request.status === RoomStatus.Maintenance) {
+        const hasActiveAppointments = mockAppointments.some(
+          (appointment) =>
+            appointment.RoomUuid === roomUuid &&
+            appointment.HospitalUuid === hospitalUuid &&
+            appointment.DeletedAt.getTime() === 0 &&
+            (appointment.Status === AppointmentStatus.Pending ||
+              appointment.Status === AppointmentStatus.Approved),
+        );
+        if (hasActiveAppointments) return appointmentConflict();
+      }
+
       if (typeof request.name === "string") room.Name = request.name.trim();
       if (request.status) room.Status = request.status;
       room.UpdatedAt = new Date();
@@ -134,9 +180,51 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
 
       if (!room) return notFound("Room not found");
 
+      const hasActiveAppointments = mockAppointments.some(
+        (appointment) =>
+          appointment.RoomUuid === roomUuid &&
+          appointment.HospitalUuid === hospitalUuid &&
+          appointment.DeletedAt.getTime() === 0 &&
+          (appointment.Status === AppointmentStatus.Pending ||
+            appointment.Status === AppointmentStatus.Approved),
+      );
+      if (hasActiveAppointments) return appointmentConflict();
+
       room.DeletedAt = new Date();
       room.UpdatedAt = new Date();
       return [204];
+    });
+
+  mock
+    .onPost(/^\/hospitals\/[^/]+\/rooms\/[^/]+\/restore$/)
+    .reply((config) => {
+      const [hospitalUuid, roomUuid] = getRoomRouteIds(config.url);
+      const hospital = mockHospitals.find(
+        (item) => item.Uuid === hospitalUuid && item.DeletedAt.getTime() === 0,
+      );
+      if (!hospital) return notFound("Hospital not found");
+
+      const room = rooms.find(
+        (item) =>
+          item.Uuid === roomUuid &&
+          item.HospitalUuid === hospitalUuid &&
+          item.DeletedAt.getTime() !== 0,
+      );
+      if (!room) return notFound("Deleted room not found");
+      if (getActiveRoomCount(hospitalUuid) >= hospital.NumberOfRoom) {
+        return capacityConflict();
+      }
+
+      room.DeletedAt = new Date(0);
+      room.UpdatedAt = new Date();
+
+      return [
+        200,
+        {
+          message: "Room restored successfully",
+          data: toRoomDto(room),
+        },
+      ];
     });
 }
 
@@ -157,6 +245,18 @@ function hospitalExists(uuid: string) {
     (hospital) =>
       hospital.Uuid === uuid && hospital.DeletedAt.getTime() === 0,
   );
+}
+
+function getActiveRoomCount(hospitalUuid: string) {
+  return rooms.filter(
+    (room) =>
+      room.HospitalUuid === hospitalUuid && room.DeletedAt.getTime() === 0,
+  ).length;
+}
+
+function getBooleanParam(params: RoomQueryParams, key: string) {
+  const value = params?.[key];
+  return value === true || value === "true";
 }
 
 function parsePayload(data: unknown): RoomCreatePayload {
@@ -182,11 +282,17 @@ function isValidRoomPayload(
     value.name.trim().length >= 1 &&
     value.name.trim().length <= 100;
   const hasValidStatus =
-    value.status === undefined ||
-    Object.values(RoomStatus).includes(value.status as RoomStatus);
+    value.status === undefined || isRoomStatus(value.status);
 
   return (requireName ? hasValidName : value.name === undefined || hasValidName) &&
     hasValidStatus;
+}
+
+function isRoomStatus(value: unknown): value is RoomStatus {
+  return (
+    typeof value === "string" &&
+    Object.values(RoomStatus).some((status) => status === value)
+  );
 }
 
 function toRoomDto(room: Room) {
@@ -197,6 +303,8 @@ function toRoomDto(room: Room) {
     hospitalUuid: room.HospitalUuid,
     createdAt: room.CreatedAt.toISOString(),
     updatedAt: room.UpdatedAt.toISOString(),
+    deletedAt:
+      room.DeletedAt.getTime() === 0 ? null : room.DeletedAt.toISOString(),
   };
 }
 
@@ -204,4 +312,24 @@ function notFound(
   message: string,
 ): [number, { message: string; error: string }] {
   return [404, { message, error: "Resource does not exist" }];
+}
+
+function capacityConflict(): [number, { message: string; error: string }] {
+  return [
+    409,
+    {
+      message: "Hospital room capacity reached",
+      error: "ROOM_CAPACITY_REACHED",
+    },
+  ];
+}
+
+function appointmentConflict(): [number, { message: string; error: string }] {
+  return [
+    409,
+    {
+      message: "Room has pending or approved appointments",
+      error: "ROOM_HAS_ACTIVE_APPOINTMENTS",
+    },
+  ];
 }

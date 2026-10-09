@@ -9,6 +9,7 @@ import {
   PackageCheck,
   Pencil,
   Plus,
+  RotateCcw,
   ShieldAlert,
   Star,
   Stethoscope,
@@ -696,6 +697,11 @@ function RoomsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<RoomStatus | "all">("all");
+  const [recordFilter, setRecordFilter] = useState<"active" | "deleted" | "all">(
+    "active",
+  );
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "error"; message: string }
@@ -726,15 +732,33 @@ function RoomsScreen() {
         const hospital = response.Data;
         const roomsResponse = await roomService.getAll(
           hospital.Uuid,
-          { page: 1, pageSize: 100 },
+          { page: 1, pageSize: 100, includeDeleted: true },
           controller.signal,
+        );
+        const remainingPages = await Promise.all(
+          Array.from(
+            { length: Math.max(roomsResponse.Data.TotalPages - 1, 0) },
+            (_, index) =>
+              roomService.getAll(
+                hospital.Uuid,
+                {
+                  page: index + 2,
+                  pageSize: 100,
+                  includeDeleted: true,
+                },
+                controller.signal,
+              ),
+          ),
         );
 
         if (active) {
           setState({
             status: "success",
             hospital,
-            rooms: roomsResponse.Data.Items,
+            rooms: [
+              ...roomsResponse.Data.Items,
+              ...remainingPages.flatMap((page) => page.Data.Items),
+            ],
           });
         }
       })
@@ -777,17 +801,36 @@ function RoomsScreen() {
   }
 
   const { hospital, rooms } = state;
-  const activeRooms = rooms;
-  const availableRooms = rooms.filter(
+  const activeRooms = rooms.filter((room) => room.DeletedAt.getTime() === 0);
+  const deletedRooms = rooms.length - activeRooms.length;
+  const availableRooms = activeRooms.filter(
     (room) => room.Status === RoomStatus.Available,
   ).length;
-  const occupiedRooms = rooms.filter(
+  const occupiedRooms = activeRooms.filter(
     (room) => room.Status === RoomStatus.Occupied,
   ).length;
-  const maintenanceRooms = rooms.filter(
+  const maintenanceRooms = activeRooms.filter(
     (room) => room.Status === RoomStatus.Maintenance,
   ).length;
-  const atCapacity = rooms.length >= hospital.NumberOfRoom;
+  const atCapacity = activeRooms.length >= hospital.NumberOfRoom;
+  const capacityPercent =
+    hospital.NumberOfRoom > 0
+      ? Math.min((activeRooms.length / hospital.NumberOfRoom) * 100, 100)
+      : 0;
+  const normalizedSearch = search.trim().toLocaleLowerCase("vi");
+  const visibleRooms = rooms.filter((room) => {
+    const isDeleted = room.DeletedAt.getTime() !== 0;
+    const matchesRecord =
+      recordFilter === "all" ||
+      (recordFilter === "deleted" ? isDeleted : !isDeleted);
+    const matchesStatus =
+      statusFilter === "all" || room.Status === statusFilter;
+    const matchesSearch =
+      !normalizedSearch ||
+      `${room.Name} ${room.Uuid}`.toLocaleLowerCase("vi").includes(normalizedSearch);
+
+    return matchesRecord && matchesStatus && matchesSearch;
+  });
 
   function openCreateForm() {
     setEditingRoom(null);
@@ -851,15 +894,20 @@ function RoomsScreen() {
 
     try {
       await roomService.delete(hospital.Uuid, room.Uuid);
+      const deletedAt = new Date();
       setState((current) =>
         current.status === "success"
           ? {
               ...current,
-              rooms: current.rooms.filter((item) => item.Uuid !== room.Uuid),
+              rooms: current.rooms.map((item) =>
+                item.Uuid === room.Uuid
+                  ? { ...item, DeletedAt: deletedAt, UpdatedAt: deletedAt }
+                  : item,
+              ),
             }
           : current,
       );
-      setMessage(`Đã xóa ${room.Name}.`);
+      setMessage(`Đã chuyển ${room.Name} vào danh sách đã xóa.`);
       if (editingRoom?.Uuid === room.Uuid) {
         setEditingRoom(null);
         setShowForm(false);
@@ -871,7 +919,35 @@ function RoomsScreen() {
     }
   }
 
-  const roomRows = rooms.map((room) => {
+  async function restoreRoom(room: Room) {
+    if (state.status !== "success" || isSaving) return;
+    setIsSaving(true);
+    setMessage("");
+
+    try {
+      const response = await roomService.restore(hospital.Uuid, room.Uuid);
+      setState((current) =>
+        current.status === "success"
+          ? {
+              ...current,
+              rooms: current.rooms.map((item) =>
+                item.Uuid === response.Data.Uuid ? response.Data : item,
+              ),
+            }
+          : current,
+      );
+      setMessage(`Đã khôi phục ${response.Data.Name}.`);
+    } catch (error) {
+      setMessage(
+        getRoomError(error, "Không thể khôi phục phòng. Vui lòng thử lại."),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const roomRows = visibleRooms.map((room) => {
+    const isDeleted = room.DeletedAt.getTime() !== 0;
     const status = room.Status === RoomStatus.Available
       ? <StatusPill tone="green">Khả dụng</StatusPill>
       : room.Status === RoomStatus.Occupied
@@ -880,10 +956,17 @@ function RoomsScreen() {
     return [
       <div key={`${room.Uuid}-name`}><p>{room.Name}</p><p className="mt-1 font-mono text-xs font-normal text-muted-foreground">{room.Uuid.slice(0, 8)}</p></div>,
       status,
+      <StatusPill key={`${room.Uuid}-record`} tone={isDeleted ? "red" : "green"}>{isDeleted ? "Đã xóa" : "Đang quản lý"}</StatusPill>,
       new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(room.UpdatedAt),
       <div key={`${room.Uuid}-actions`} className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { setEditingRoom(room); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
-        <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => deleteRoom(room)}><Trash2 />Xóa</Button>
+        {isDeleted ? (
+          <Button type="button" size="sm" variant="outline" disabled={isSaving || atCapacity} onClick={() => restoreRoom(room)}><RotateCcw />Khôi phục</Button>
+        ) : (
+          <>
+            <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { setEditingRoom(room); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
+            <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => deleteRoom(room)}><Trash2 />Xóa</Button>
+          </>
+        )}
       </div>,
     ];
   });
@@ -895,12 +978,12 @@ function RoomsScreen() {
         <MetricCard label="Công suất cấu hình" value={`${activeRooms.length}/${hospital.NumberOfRoom}`} detail={atCapacity ? "Đã đạt giới hạn, không thể thêm phòng" : `Còn ${hospital.NumberOfRoom - activeRooms.length} vị trí phòng`} icon={<BedDouble className="size-5" />} tone={atCapacity ? "red" : "blue"} />
         <MetricCard label="Khả dụng" value={String(availableRooms)} detail="Sẵn sàng tiếp nhận" icon={<ClipboardCheck className="size-5" />} tone="green" />
         <MetricCard label="Đang sử dụng" value={String(occupiedRooms)} detail={`${maintenanceRooms} phòng đang bảo trì`} icon={<Activity className="size-5" />} tone="cyan" />
-        <MetricCard label="Bảo trì" value={String(maintenanceRooms)} detail="Tạm ngưng tiếp nhận" icon={<Trash2 className="size-5" />} tone="amber" />
+        <MetricCard label="Bảo trì" value={String(maintenanceRooms)} detail={`${deletedRooms} phòng đã xóa mềm`} icon={<Trash2 className="size-5" />} tone="amber" />
       </MetricGrid>
       <PortalSection title="Sức chứa phòng" description={`${activeRooms.length} phòng đang quản lý trên tối đa ${hospital.NumberOfRoom} phòng`}>
         <div className="p-5">
-          <div className="mb-2 flex items-center justify-between gap-4 text-sm"><span className="font-medium">Mức sử dụng cấu hình</span><span className={atCapacity ? "font-semibold text-red-600" : "text-muted-foreground"}>{Math.round((activeRooms.length / hospital.NumberOfRoom) * 100)}%</span></div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${atCapacity ? "bg-red-500" : "bg-primary"}`} style={{ width: `${Math.min((activeRooms.length / hospital.NumberOfRoom) * 100, 100)}%` }} /></div>
+          <div className="mb-2 flex items-center justify-between gap-4 text-sm"><span className="font-medium">Mức sử dụng cấu hình</span><span className={atCapacity ? "font-semibold text-red-600" : "text-muted-foreground"}>{Math.round(capacityPercent)}%</span></div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${atCapacity ? "bg-red-500" : "bg-primary"}`} style={{ width: `${capacityPercent}%` }} /></div>
           <p className="mt-3 text-xs text-muted-foreground">Phòng đã xóa mềm không xuất hiện trong danh sách vận hành và không chiếm sức chứa.</p>
         </div>
       </PortalSection>
@@ -915,10 +998,52 @@ function RoomsScreen() {
       ) : null}
       {message ? <p role={message.startsWith("Không thể") ? "alert" : "status"} className={`border px-4 py-3 text-sm ${message.startsWith("Không thể") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</p> : null}
       <PortalSection title="Danh sách phòng" description={`${activeRooms.length} phòng đang quản lý`}>
+        <div className="grid gap-3 border-b bg-[#fbfdfe] p-4 sm:grid-cols-3">
+          <label className="sm:col-span-1">
+            <span className="sr-only">Tìm theo tên hoặc mã phòng</span>
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.currentTarget.value)}
+              placeholder="Tìm tên hoặc mã phòng"
+              className="h-9"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Lọc theo trạng thái phòng</span>
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.currentTarget.value as RoomStatus | "all")
+              }
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value={RoomStatus.Available}>Khả dụng</option>
+              <option value={RoomStatus.Occupied}>Đang sử dụng</option>
+              <option value={RoomStatus.Maintenance}>Bảo trì</option>
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Lọc bản ghi phòng</span>
+            <select
+              value={recordFilter}
+              onChange={(event) =>
+                setRecordFilter(
+                  event.currentTarget.value as "active" | "deleted" | "all",
+                )
+              }
+              className="h-9 w-full rounded-md border bg-white px-3 text-sm"
+            >
+              <option value="active">Đang quản lý</option>
+              <option value="deleted">Đã xóa</option>
+              <option value="all">Tất cả bản ghi</option>
+            </select>
+          </label>
+        </div>
         {roomRows.length > 0 ? (
-          <PortalTable caption="Danh sách phòng khám" columns={["Phòng", "Trạng thái", "Cập nhật", "Thao tác"]} rows={roomRows} />
+          <PortalTable caption="Danh sách phòng khám" columns={["Phòng", "Trạng thái", "Bản ghi", "Cập nhật", "Thao tác"]} rows={roomRows} />
         ) : (
-          <p className="p-8 text-center text-sm text-muted-foreground">Chi nhánh chưa có phòng khám nào.</p>
+          <p className="p-8 text-center text-sm text-muted-foreground">{rooms.length ? "Không có phòng phù hợp với bộ lọc." : "Chi nhánh chưa có phòng khám nào."}</p>
         )}
       </PortalSection>
     </div>
@@ -1119,7 +1244,20 @@ function getHospitalSaveError(
 }
 
 function getRoomError(error: unknown, fallback: string) {
-  if (isAxiosError<{ message?: string; Message?: string }>(error)) {
+  if (
+    isAxiosError<{
+      error?: string;
+      message?: string;
+      Message?: string;
+    }>(error)
+  ) {
+    const code = error.response?.data?.error;
+    if (code === "ROOM_CAPACITY_REACHED") {
+      return "Không thể thêm hoặc khôi phục phòng vì chi nhánh đã đạt sức chứa cấu hình.";
+    }
+    if (code === "ROOM_HAS_ACTIVE_APPOINTMENTS") {
+      return "Không thể xóa hoặc đưa phòng vào bảo trì vì phòng còn lịch hẹn đang chờ hoặc đã xác nhận.";
+    }
     return error.response?.data?.message ?? error.response?.data?.Message ?? fallback;
   }
 

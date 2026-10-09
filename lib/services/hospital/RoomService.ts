@@ -6,6 +6,8 @@ export type RoomListQuery = {
   page?: number;
   pageSize?: number;
   status?: RoomStatus;
+  search?: string;
+  includeDeleted?: boolean;
 };
 
 export type CreateRoomRequest = {
@@ -25,6 +27,7 @@ type RoomApiDto = {
   hospitalUuid: Guid | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 };
 
 type RoomListApiResponse = {
@@ -124,6 +127,20 @@ export class RoomService {
       `/hospitals/${encodeURIComponent(hospitalUuid)}/rooms/${encodeURIComponent(roomUuid)}`,
     );
   }
+
+  async restore(
+    hospitalUuid: Guid,
+    roomUuid: Guid,
+  ): Promise<ApiResponse<Room>> {
+    const response = await httpClient.post<RoomApiResponse>(
+      `/hospitals/${encodeURIComponent(hospitalUuid)}/rooms/${encodeURIComponent(roomUuid)}/restore`,
+    );
+
+    return {
+      Message: response.data.message,
+      Data: toRoom(response.data.data, hospitalUuid),
+    };
+  }
 }
 
 function toRoom(room: RoomApiDto, hospitalUuid: Guid): Room {
@@ -134,7 +151,7 @@ function toRoom(room: RoomApiDto, hospitalUuid: Guid): Room {
     HospitalUuid: room.hospitalUuid ?? hospitalUuid,
     CreatedAt: new Date(room.createdAt),
     UpdatedAt: new Date(room.updatedAt),
-    DeletedAt: new Date(0),
+    DeletedAt: room.deletedAt ? new Date(room.deletedAt) : new Date(0),
   };
 }
 
