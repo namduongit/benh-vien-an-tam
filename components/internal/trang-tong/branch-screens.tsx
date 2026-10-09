@@ -16,8 +16,10 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { isAxiosError } from "axios";
 
+import { ErrorState, LoadingState } from "@/components/shared/data-state";
 import {
   DetailGrid,
   DetailItem,
@@ -37,8 +39,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { HospitalWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
 import { mockHospitals } from "@/data/mocks/hospitals";
+import {
+  hospitalService,
+  type HospitalUpdateRequest,
+} from "@/lib/services/hospital/HospitalService";
 import { mockRooms } from "@/data/mocks/rooms";
-import { RoomStatus, type Room } from "@/types/models";
+import {
+  BaseStatus,
+  RoomStatus,
+  type Hospital,
+  type Room,
+} from "@/types/models";
 
 export function BranchScreens({ slug }: { slug: string }) {
   switch (slug) {
@@ -99,26 +110,226 @@ function HospitalDashboard() {
 }
 
 function HospitalProfileScreen() {
+  const [attempt, setAttempt] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | {
+        status: "success";
+        hospital: Hospital;
+        draft: HospitalProfileDraft;
+        savedMessage?: string;
+        saveError?: string;
+      }
+    | { status: "error"; message: string }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    setState({ status: "loading" });
+    hospitalService
+      .getBranchProfile(controller.signal)
+      .then((response) => {
+        if (active) {
+          setState({
+            status: "success",
+            hospital: response.Data,
+            draft: toHospitalProfileDraft(response.Data),
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            status: "error",
+            message: "Không thể tải thông tin chi nhánh. Vui lòng thử lại.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [attempt]);
+
+  if (state.status === "loading") {
+    return <LoadingState label="Đang tải thông tin chi nhánh" />;
+  }
+
+  if (state.status === "error") {
+    return (
+      <ErrorState
+        message={state.message}
+        onRetry={() => setAttempt((current) => current + 1)}
+      />
+    );
+  }
+
+  const { hospital, draft } = state;
+  const isActive = hospital.Status === BaseStatus.Active;
+
+  function updateDraft<K extends keyof HospitalProfileDraft>(
+    key: K,
+    value: HospitalProfileDraft[K],
+  ) {
+    setState((current) =>
+      current.status === "success"
+        ? {
+            ...current,
+            draft: { ...current.draft, [key]: value },
+            savedMessage: undefined,
+            saveError: undefined,
+          }
+        : current,
+    );
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (state.status !== "success") return;
+
+    setIsSaving(true);
+    setState((current) =>
+      current.status === "success"
+        ? { ...current, savedMessage: undefined, saveError: undefined }
+        : current,
+    );
+
+    const request: HospitalUpdateRequest = {
+      Image: hospital.Image,
+      MapUrl: hospital.MapUrl,
+      Slug: draft.Slug.trim(),
+      Name: draft.Name.trim(),
+      Address: draft.Address.trim(),
+      NumberOfRoom: Number(draft.NumberOfRoom),
+      Description: draft.Description.trim(),
+      DetailService: hospital.DetailService,
+      WorkingHour: draft.WorkingHour.trim(),
+    };
+
+    try {
+      const response = await hospitalService.updateBranchProfile(
+        hospital.Uuid,
+        request,
+      );
+      setState({
+        status: "success",
+        hospital: response.Data,
+        draft: toHospitalProfileDraft(response.Data),
+        savedMessage: response.Message,
+      });
+    } catch (error) {
+      setState((current) =>
+        current.status === "success"
+          ? { ...current, saveError: getHospitalSaveError(error) }
+          : current,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Thiết lập chi nhánh" title="Thông tin chi nhánh" description="Cập nhật thông tin công khai của BV Đa khoa Thành Phố. Thay đổi trạng thái hoạt động cần SYSTEM_ADMIN phê duyệt." actions={<PortalAction variant="default">Lưu thay đổi</PortalAction>} />
+      <PortalPageHeader
+        eyebrow="Thiết lập chi nhánh"
+        title="Thông tin chi nhánh"
+        description="Cập nhật thông tin công khai của chi nhánh."
+        actions={
+          <Button
+            type="submit"
+            form="hospital-profile-form"
+            disabled={isSaving}
+          >
+            {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
+          </Button>
+        }
+      />
       <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
         <PortalSection title="Thông tin hiển thị">
-          <form className="grid gap-5 p-5 sm:grid-cols-2">
-            <Field label="Tên cơ sở" defaultValue="Bệnh viện Đa khoa Thành Phố" />
-            <Field label="Slug" defaultValue="benh-vien-da-khoa-thanh-pho" />
-            <div className="sm:col-span-2"><Field label="Địa chỉ" defaultValue="215 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh" /></div>
-            <Field label="Giờ làm việc" defaultValue="Thứ 2 - Thứ 7, 07:00 - 17:00" />
-            <Field label="Số phòng" defaultValue="24" type="number" />
-            <div className="space-y-2 sm:col-span-2"><Label htmlFor="hospital-description">Mô tả</Label><Textarea id="hospital-description" rows={6} defaultValue="Bệnh viện đa khoa cung cấp dịch vụ khám, chẩn đoán và điều trị với đội ngũ chuyên môn nhiều kinh nghiệm." /></div>
+          <form
+            id="hospital-profile-form"
+            onSubmit={handleSubmit}
+            className="grid gap-5 p-5 sm:grid-cols-2"
+          >
+            <Field
+              label="Tên cơ sở"
+              value={draft.Name}
+              onChange={(value) => updateDraft("Name", value)}
+              required
+              disabled={isSaving}
+            />
+            <Field
+              label="Slug"
+              value={draft.Slug}
+              onChange={(value) => updateDraft("Slug", value)}
+              required
+              disabled={isSaving}
+            />
+            <div className="sm:col-span-2">
+              <Field
+                label="Địa chỉ"
+                value={draft.Address}
+                onChange={(value) => updateDraft("Address", value)}
+                required
+                disabled={isSaving}
+              />
+            </div>
+            <Field
+              label="Giờ làm việc"
+              value={draft.WorkingHour}
+              onChange={(value) => updateDraft("WorkingHour", value)}
+              required
+              disabled={isSaving}
+            />
+            <Field
+              label="Số phòng"
+              value={draft.NumberOfRoom}
+              onChange={(value) => updateDraft("NumberOfRoom", value)}
+              type="number"
+              min="1"
+              step="1"
+              required
+              disabled={isSaving}
+            />
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="hospital-description">Mô tả</Label>
+              <Textarea
+                id="hospital-description"
+                rows={6}
+                value={draft.Description}
+                onChange={(event) =>
+                  updateDraft("Description", event.currentTarget.value)
+                }
+                disabled={isSaving}
+              />
+            </div>
+            {state.savedMessage ? (
+              <p
+                role="status"
+                className="text-sm font-medium text-emerald-700 sm:col-span-2"
+              >
+                {state.savedMessage}
+              </p>
+            ) : null}
+            {state.saveError ? (
+              <p
+                role="alert"
+                className="text-sm font-medium text-destructive sm:col-span-2"
+              >
+                {state.saveError}
+              </p>
+            ) : null}
           </form>
         </PortalSection>
         <PortalSection title="Trạng thái xuất bản">
           <DetailGrid>
-            <DetailItem label="Trạng thái" value={<StatusPill tone="green">Hoạt động</StatusPill>} />
-            <DetailItem label="Mã cơ sở" value="HSP-0001" />
-            <DetailItem label="Cập nhật cuối" value="22/09/2026 16:20" />
-            <DetailItem label="Người cập nhật" value="Nguyễn Minh Anh" />
+            <DetailItem label="Trạng thái" value={<StatusPill tone={isActive ? "green" : "amber"}>{isActive ? "Hoạt động" : "Tạm ngưng"}</StatusPill>} />
+            <DetailItem label="UUID cơ sở" value={<span className="break-all font-mono text-xs">{hospital.Uuid}</span>} />
+            <DetailItem label="Cập nhật cuối" value={formatHospitalDate(hospital.UpdatedAt)} />
           </DetailGrid>
         </PortalSection>
       </div>
@@ -433,7 +644,83 @@ function OperationalTable({ eyebrow, title, description, action, metrics, column
   );
 }
 
-function Field({ label, defaultValue, type = "text" }: { label: string; defaultValue: string; type?: string }) {
+type HospitalProfileDraft = {
+  Name: string;
+  Slug: string;
+  Address: string;
+  WorkingHour: string;
+  NumberOfRoom: string;
+  Description: string;
+};
+
+function toHospitalProfileDraft(hospital: Hospital): HospitalProfileDraft {
+  return {
+    Name: hospital.Name,
+    Slug: hospital.Slug,
+    Address: hospital.Address,
+    WorkingHour: hospital.WorkingHour,
+    NumberOfRoom: String(hospital.NumberOfRoom),
+    Description: hospital.Description,
+  };
+}
+
+function getHospitalSaveError(error: unknown) {
+  if (isAxiosError<{ Message?: string; message?: string }>(error)) {
+    return (
+      error.response?.data?.Message ??
+      error.response?.data?.message ??
+      "Không thể lưu thông tin chi nhánh. Vui lòng thử lại."
+    );
+  }
+
+  return error instanceof Error && error.message
+    ? error.message
+    : "Không thể lưu thông tin chi nhánh. Vui lòng thử lại.";
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  min,
+  step,
+  required = false,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  min?: string;
+  step?: string;
+  required?: boolean;
+  disabled?: boolean;
+}) {
   const id = `hospital-${label.toLowerCase().replaceAll(" ", "-")}`;
-  return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><Input id={id} type={type} defaultValue={defaultValue} /></div>;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        min={min}
+        step={step}
+        value={value}
+        required={required}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+function formatHospitalDate(value: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có dữ liệu";
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
 }
