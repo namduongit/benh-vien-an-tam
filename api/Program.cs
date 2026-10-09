@@ -9,13 +9,17 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
+
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+// Allow enum in each request
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-
+// Config cors
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -24,7 +28,6 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .AllowCredentials());
 });
-
 // Config Momo  & Jwt
 builder.Services.Configure<MomoSetting>(builder.Configuration.GetSection("MomoConfiguration"));
 builder.Services.Configure<JwtSetting>(builder.Configuration.GetSection("Jwt"));
@@ -53,7 +56,7 @@ builder.Services
             }
         };
     });
-    
+
 builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton<PasswordHasher>();
@@ -73,7 +76,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
@@ -85,4 +89,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseSwagger();
+
 app.Run();
