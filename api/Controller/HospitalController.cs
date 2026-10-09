@@ -71,12 +71,13 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         });
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetHospital(Guid id, CancellationToken cancellationToken = default)
+    [HttpGet("{slugOrId}")]
+    public async Task<IActionResult> GetHospital(string slugOrId, CancellationToken cancellationToken = default)
     {
-        var hospital = await dbContext.Hospitals
-            .Where(x => x.Uuid == id && x.DeletedAt == null)
-            .FirstOrDefaultAsync(cancellationToken);
+        var hospitals = dbContext.Hospitals.Where(x => x.DeletedAt == null);
+        var hospital = Guid.TryParse(slugOrId, out var uuid)
+            ? await hospitals.FirstOrDefaultAsync(x => x.Uuid == uuid, cancellationToken)
+            : await hospitals.FirstOrDefaultAsync(x => x.Slug == slugOrId, cancellationToken);
 
         if (hospital is null)
             return NotFound(new { message = "Hospital not found", error = "Resource does not exist" });
