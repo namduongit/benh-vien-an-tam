@@ -467,12 +467,14 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
                 x => x.RoomUuid == roomId &&
                      x.HospitalUuid == id &&
                      x.DeletedAt == null &&
-                     (x.Status == AppointmentStatus.Pending || x.Status == AppointmentStatus.Approved),
+                     (x.Status == AppointmentStatus.Pending ||
+                      x.Status == AppointmentStatus.Approved ||
+                      x.Status == AppointmentStatus.CheckedIn),
                 cancellationToken);
             if (hasActiveAppointments)
                 return Conflict(new
                 {
-                    message = "Room has pending or approved appointments",
+                    message = "Room has active appointments",
                     error = "ROOM_HAS_ACTIVE_APPOINTMENTS"
                 });
         }
@@ -515,12 +517,14 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             x => x.RoomUuid == roomId &&
                  x.HospitalUuid == id &&
                  x.DeletedAt == null &&
-                 (x.Status == AppointmentStatus.Pending || x.Status == AppointmentStatus.Approved),
+                 (x.Status == AppointmentStatus.Pending ||
+                  x.Status == AppointmentStatus.Approved ||
+                  x.Status == AppointmentStatus.CheckedIn),
             cancellationToken);
         if (hasActiveAppointments)
             return Conflict(new
             {
-                message = "Room has pending or approved appointments",
+                message = "Room has active appointments",
                 error = "ROOM_HAS_ACTIVE_APPOINTMENTS"
             });
 

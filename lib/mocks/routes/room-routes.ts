@@ -152,7 +152,8 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
             appointment.HospitalUuid === hospitalUuid &&
             appointment.DeletedAt.getTime() === 0 &&
             (appointment.Status === AppointmentStatus.Pending ||
-              appointment.Status === AppointmentStatus.Approved),
+              appointment.Status === AppointmentStatus.Approved ||
+              appointment.Status === AppointmentStatus.CheckedIn),
         );
         if (hasActiveAppointments) return appointmentConflict();
       }
@@ -186,7 +187,8 @@ export function registerRoomRoutes(mock: AxiosMockAdapter) {
           appointment.HospitalUuid === hospitalUuid &&
           appointment.DeletedAt.getTime() === 0 &&
           (appointment.Status === AppointmentStatus.Pending ||
-            appointment.Status === AppointmentStatus.Approved),
+            appointment.Status === AppointmentStatus.Approved ||
+            appointment.Status === AppointmentStatus.CheckedIn),
       );
       if (hasActiveAppointments) return appointmentConflict();
 
@@ -328,7 +330,7 @@ function appointmentConflict(): [number, { message: string; error: string }] {
   return [
     409,
     {
-      message: "Room has pending or approved appointments",
+      message: "Room has active appointments",
       error: "ROOM_HAS_ACTIVE_APPOINTMENTS",
     },
   ];

@@ -316,6 +316,8 @@ export type PrescriptionDetail = {
 export enum AppointmentStatus {
   Pending = "Pending",
   Approved = "Approved",
+  Unconfirmed = "Unconfirmed",
+  CheckedIn = "CheckedIn",
   Done = "Done",
   Cancelled = "Cancelled",
 }

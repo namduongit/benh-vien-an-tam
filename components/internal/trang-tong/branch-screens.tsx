@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { HospitalWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
+import { BranchAppointmentsScreen } from "@/components/internal/trang-tong/branch-appointments-screen";
 import { markdownToPlainText } from "@/lib/format";
 import {
   hospitalService,
@@ -58,6 +59,14 @@ import {
   type MedicalService,
   type Room,
 } from "@/types/models";
+
+const appointmentRows = [
+  ["09:30", "Nguyễn Thị Lan · BN-10248", "Khám bác sĩ", "BS. Nguyễn Hoàng Minh · P.203", <StatusPill key="1" tone="blue">Đã xác nhận</StatusPill>],
+  ["09:45", "Trần Văn Phúc · BN-08421", "Khám tổng quát", "P.101", <StatusPill key="2" tone="amber">Chờ xác nhận</StatusPill>],
+  ["10:00", "Lê Minh Châu · BN-11203", "Siêu âm tổng quát", "P.307", <StatusPill key="3" tone="green">Đã check-in</StatusPill>],
+  ["10:15", "Phạm Thị Hồng · BN-09682", "Khám bác sĩ", "BS. Phạm Ngọc Anh · P.205", <StatusPill key="4" tone="blue">Đã xác nhận</StatusPill>],
+  ["10:30", "Hoàng Nam Sơn · BN-11824", "Xét nghiệm máu", "P.108", <StatusPill key="5" tone="red">Đã hủy</StatusPill>],
+];
 
 export function BranchScreens({ slug }: { slug: string }) {
   switch (slug) {
@@ -1537,30 +1546,8 @@ function StaffAccountsScreen() {
   );
 }
 
-const appointmentRows = [
-  ["09:30", "Nguyễn Thị Lan · BN-10248", "Khám bác sĩ", "BS. Nguyễn Hoàng Minh · P.203", <StatusPill key="1" tone="blue">Đã xác nhận</StatusPill>],
-  ["09:45", "Trần Văn Phúc · BN-08421", "Khám tổng quát", "P.101", <StatusPill key="2" tone="amber">Chờ xác nhận</StatusPill>],
-  ["10:00", "Lê Minh Châu · BN-11203", "Siêu âm tổng quát", "P.307", <StatusPill key="3" tone="green">Đã check-in</StatusPill>],
-  ["10:15", "Phạm Thị Hồng · BN-09682", "Khám bác sĩ", "BS. Phạm Ngọc Anh · P.205", <StatusPill key="4" tone="blue">Đã xác nhận</StatusPill>],
-  ["10:30", "Hoàng Nam Sơn · BN-11824", "Xét nghiệm máu", "P.108", <StatusPill key="5" tone="red">Đã hủy</StatusPill>],
-];
-
 function HospitalAppointmentsScreen() {
-  return (
-    <div className="space-y-6">
-      <PortalPageHeader eyebrow="Điều phối khám" title="Lịch hẹn chi nhánh" description="Xác nhận, đổi lịch, gán phòng và theo dõi check-in của mọi lịch thuộc chi nhánh." actions={<PortalAction variant="default"><Plus />Tạo lịch thay bệnh nhân</PortalAction>} />
-      <MetricGrid>
-        <MetricCard label="Tổng lịch hôm nay" value="148" detail="Tăng 8,1% so với thứ Tư trước" trend="up" icon={<CalendarCheck2 className="size-5" />} />
-        <MetricCard label="Chờ xác nhận" value="18" detail="Lịch gần nhất lúc 09:45" icon={<ShieldAlert className="size-5" />} tone="amber" />
-        <MetricCard label="Đã check-in" value="92" detail="12 bệnh nhân đang chờ" icon={<ClipboardCheck className="size-5" />} tone="green" />
-        <MetricCard label="Đã hủy" value="6" detail="4,1% lịch hôm nay" icon={<Activity className="size-5" />} tone="red" />
-      </MetricGrid>
-      <PortalSection title="Danh sách lịch hẹn">
-        <PortalToolbar placeholder="Tìm tên, mã y tế hoặc số điện thoại" filters={[{ label: "Hôm nay", options: ["Ngày mai", "7 ngày tới"] }, { label: "Tất cả trạng thái", options: ["Chờ xác nhận", "Đã xác nhận", "Hoàn thành", "Đã hủy"] }, { label: "Tất cả loại lịch", options: ["Bệnh viện", "Bác sĩ", "Dịch vụ"] }]} />
-        <PortalTable caption="Danh sách lịch hẹn chi nhánh" columns={["Giờ", "Bệnh nhân", "Loại lịch", "Bác sĩ / phòng", "Trạng thái"]} rows={appointmentRows} />
-      </PortalSection>
-    </div>
-  );
+  return <BranchAppointmentsScreen />;
 }
 
 function HospitalPrescriptionsScreen() {
