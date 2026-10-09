@@ -697,6 +697,10 @@ function RoomsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [roomName, setRoomName] = useState("");
+  const [roomStatus, setRoomStatus] = useState<RoomStatus>(
+    RoomStatus.Available,
+  );
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RoomStatus | "all">("all");
   const [recordFilter, setRecordFilter] = useState<"active" | "deleted" | "all">(
@@ -802,16 +806,6 @@ function RoomsScreen() {
 
   const { hospital, rooms } = state;
   const activeRooms = rooms.filter((room) => room.DeletedAt.getTime() === 0);
-  const deletedRooms = rooms.length - activeRooms.length;
-  const availableRooms = activeRooms.filter(
-    (room) => room.Status === RoomStatus.Available,
-  ).length;
-  const occupiedRooms = activeRooms.filter(
-    (room) => room.Status === RoomStatus.Occupied,
-  ).length;
-  const maintenanceRooms = activeRooms.filter(
-    (room) => room.Status === RoomStatus.Maintenance,
-  ).length;
   const atCapacity = activeRooms.length >= hospital.NumberOfRoom;
   const capacityPercent =
     hospital.NumberOfRoom > 0
@@ -834,6 +828,8 @@ function RoomsScreen() {
 
   function openCreateForm() {
     setEditingRoom(null);
+    setRoomName("");
+    setRoomStatus(RoomStatus.Available);
     setShowForm(true);
     setMessage("");
   }
@@ -842,9 +838,12 @@ function RoomsScreen() {
     event.preventDefault();
     if (state.status !== "success" || isSaving) return;
 
-    const data = new FormData(event.currentTarget);
-    const name = String(data.get("name")).trim();
-    const status = String(data.get("status")) as RoomStatus;
+    const name = roomName.trim();
+    const status = roomStatus;
+    if (!name) {
+      setMessage("Vui lòng nhập tên phòng.");
+      return;
+    }
     setIsSaving(true);
     setMessage("");
 
@@ -963,7 +962,7 @@ function RoomsScreen() {
           <Button type="button" size="sm" variant="outline" disabled={isSaving || atCapacity} onClick={() => restoreRoom(room)}><RotateCcw />Khôi phục</Button>
         ) : (
           <>
-            <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { setEditingRoom(room); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
+            <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { setEditingRoom(room); setRoomName(room.Name); setRoomStatus(room.Status); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
             <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => deleteRoom(room)}><Trash2 />Xóa</Button>
           </>
         )}
@@ -974,12 +973,6 @@ function RoomsScreen() {
   return (
     <div className="space-y-6">
       <PortalPageHeader eyebrow="Vận hành cơ sở" title="Phòng khám" description={`Quản lý phòng của ${hospital.Name}; giới hạn lấy từ cấu hình Hospital.NumberOfRoom.`} actions={<Button type="button" size="sm" onClick={openCreateForm} disabled={atCapacity || isSaving}><Plus />Thêm phòng</Button>} />
-      <MetricGrid>
-        <MetricCard label="Công suất cấu hình" value={`${activeRooms.length}/${hospital.NumberOfRoom}`} detail={atCapacity ? "Đã đạt giới hạn, không thể thêm phòng" : `Còn ${hospital.NumberOfRoom - activeRooms.length} vị trí phòng`} icon={<BedDouble className="size-5" />} tone={atCapacity ? "red" : "blue"} />
-        <MetricCard label="Khả dụng" value={String(availableRooms)} detail="Sẵn sàng tiếp nhận" icon={<ClipboardCheck className="size-5" />} tone="green" />
-        <MetricCard label="Đang sử dụng" value={String(occupiedRooms)} detail={`${maintenanceRooms} phòng đang bảo trì`} icon={<Activity className="size-5" />} tone="cyan" />
-        <MetricCard label="Bảo trì" value={String(maintenanceRooms)} detail={`${deletedRooms} phòng đã xóa mềm`} icon={<Trash2 className="size-5" />} tone="amber" />
-      </MetricGrid>
       <PortalSection title="Sức chứa phòng" description={`${activeRooms.length} phòng đang quản lý trên tối đa ${hospital.NumberOfRoom} phòng`}>
         <div className="p-5">
           <div className="mb-2 flex items-center justify-between gap-4 text-sm"><span className="font-medium">Mức sử dụng cấu hình</span><span className={atCapacity ? "font-semibold text-red-600" : "text-muted-foreground"}>{Math.round(capacityPercent)}%</span></div>
@@ -990,9 +983,9 @@ function RoomsScreen() {
       {showForm ? (
         <PortalSection title={editingRoom ? `Chỉnh sửa ${editingRoom.Name}` : "Thêm phòng mới"} description={editingRoom ? "Cập nhật tên và trạng thái vận hành." : `Còn ${Math.max(hospital.NumberOfRoom - activeRooms.length, 0)} vị trí có thể tạo.`}>
           <form onSubmit={handleSubmit} className="grid gap-5 p-5 sm:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="room-name">Tên phòng</Label><Input id="room-name" name="name" maxLength={100} defaultValue={editingRoom?.Name ?? ""} placeholder="Ví dụ: Phòng khám A2" required disabled={isSaving} /></div>
-            <div className="space-y-2"><Label htmlFor="room-status">Trạng thái</Label><select id="room-status" name="status" defaultValue={editingRoom?.Status ?? RoomStatus.Available} disabled={isSaving} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value={RoomStatus.Available}>Khả dụng</option><option value={RoomStatus.Occupied}>Đang sử dụng</option><option value={RoomStatus.Maintenance}>Bảo trì</option></select></div>
-            <div className="flex gap-2 sm:col-span-2"><Button type="submit" disabled={isSaving || (!editingRoom && atCapacity)}>{isSaving ? "Đang lưu..." : editingRoom ? "Lưu thay đổi" : "Thêm phòng"}</Button><Button type="button" variant="outline" disabled={isSaving} onClick={() => { setShowForm(false); setEditingRoom(null); }}>Hủy</Button></div>
+            <div className="space-y-2"><Label htmlFor="room-name">Tên phòng</Label><Input id="room-name" name="name" maxLength={100} value={roomName} onChange={(event) => setRoomName(event.currentTarget.value)} placeholder="Ví dụ: Phòng khám A2" required disabled={isSaving} /></div>
+            <div className="space-y-2"><Label htmlFor="room-status">Trạng thái</Label><select id="room-status" name="status" value={roomStatus} onChange={(event) => setRoomStatus(event.currentTarget.value as RoomStatus)} disabled={isSaving} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value={RoomStatus.Available}>Khả dụng</option><option value={RoomStatus.Occupied}>Đang sử dụng</option><option value={RoomStatus.Maintenance}>Bảo trì</option></select></div>
+            <div className="flex gap-2 sm:col-span-2"><Button type="submit" disabled={isSaving || (!editingRoom && atCapacity)}>{isSaving ? "Đang lưu..." : editingRoom ? "Lưu thay đổi" : "Thêm phòng"}</Button><Button type="button" variant="outline" disabled={isSaving} onClick={() => { setShowForm(false); setEditingRoom(null); setRoomName(""); setRoomStatus(RoomStatus.Available); }}>Hủy</Button></div>
           </form>
         </PortalSection>
       ) : null}
