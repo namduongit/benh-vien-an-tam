@@ -1,10 +1,10 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using api.Config;
 using api.Lib;
 using api.Lib.Setting;
 using api.Middleware;
 using api.Service;
+using api.Service.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -14,9 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -26,22 +25,11 @@ builder.Services.AddCors(options =>
             .AllowCredentials());
 });
 
-// Config Momo 
-builder.Services.Configure<MomoSetting>(
-    builder.Configuration.GetSection("MomoConfiguration")
-);
+// Config Momo  & Jwt
+builder.Services.Configure<MomoSetting>(builder.Configuration.GetSection("MomoConfiguration"));
+builder.Services.Configure<JwtSetting>(builder.Configuration.GetSection("Jwt"));
 
-// Config Jwt
-builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
-    .Validate(options => options.SecretKey.Length >= 32, "Jwt:SecretKey must contain at least 32 characters.")
-    .Validate(options => options.AccessTokenMinutes > 0, "Jwt:AccessTokenMinutes must be greater than zero.")
-    .Validate(options => options.RefreshTokenDays > 0, "Jwt:RefreshTokenDays must be greater than zero.")
-    .ValidateOnStart();
-
-var jwtOptions = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>() ?? new JwtOptions();
+var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtSetting>() ?? new JwtSetting();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -65,12 +53,17 @@ builder.Services
             }
         };
     });
+    
 builder.Services.AddAuthorization();
+
 builder.Services.AddSingleton<PasswordHasher>();
-builder.Services.AddSingleton<JwtService>();
+builder.Services.AddSingleton<Jwt>();
+
 builder.Services.AddScoped<AuthService>();
-// builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
-// builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
+builder.Services.AddScoped<Momo>();
+
+builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
+builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
 
 // Config Postges
 builder.Services.AddDbContext<DBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));

@@ -1,8 +1,10 @@
-using api.Config;
-using api.Config.Type;
+using System.Security.Claims;
+using System.Text.Json.Serialization;
 using api.Contract;
 using api.Contract.Auth;
 using api.Lib;
+using api.Lib.Setting;
+using api.Lib.Type;
 using api.Model;
 using api.Model.Enum;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +15,11 @@ namespace api.Service;
 public sealed class AuthService(
     DBContext dbContext,
     PasswordHasher passwordHasher,
-    JwtService jwtService,
-    IOptions<JwtOptions> jwtOptions)
+    Jwt jwt,
+    IOptions<JwtSetting> jwtOptions
+)
 {
-    private readonly JwtOptions _jwtOptions = jwtOptions.Value;
+    private readonly JwtSetting _jwtSetting = jwtOptions.Value;
 
     public async Task<RegisterResult> RegisterAsync(
         RegisterRequest request,
@@ -49,7 +52,7 @@ public sealed class AuthService(
             Uuid = accountUuid,
             Phone = phone,
             Password = passwordHasher.Hash(request.Password),
-            RoleUuid = AuthConstants.PatientRoleUuid,
+            RoleUuid = null,
             Status = BaseStatus.Active,
             CreatedAt = now,
             UpdatedAt = now
@@ -61,7 +64,7 @@ public sealed class AuthService(
             Name = request.Name.Trim(),
             Gender = request.Gender,
             Birthdate = request.Birthdate!.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            MedicalCode = $"BN-{profileUuid:N}"[..13].ToUpperInvariant(),
+            MedicalCode = "",
             Email = email
         };
 
@@ -90,97 +93,164 @@ public sealed class AuthService(
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.Phone == phone, cancellationToken);
 
-        if (account is null || account.DeletedAt.HasValue || account.Status != BaseStatus.Active ||
-            account.RoleUuid != AuthConstants.PatientRoleUuid ||
-            !passwordHasher.Verify(request.Password, account.Password))
+        if (account is null)
         {
-            throw new AppException(401, "So dien thoai hoac mat khau khong dung.");
+            throw new AppException(401, "Tài khoản không tồn tại");
         }
 
-        var profile = await dbContext.PatientProfiles
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.AccountUuid == account.Uuid, cancellationToken);
-        if (profile is null)
+        if (account.Status != BaseStatus.Active)
         {
-            throw new AppException(401, "So dien thoai hoac mat khau khong dung.");
+            throw new AppException(401, "Tài khoản đã bị khóa");
         }
 
-        return CreateLoginResult(account, profile);
+        if (!passwordHasher.Verify(request.Password, account.Password))
+        {
+            throw new AppException(401, "Mật khẩu không chính xác");
+        }
+
+        var profile = await FindProfileAsync(account.Uuid, cancellationToken);
+
+        return await CreateLoginResultAsync(account, profile, cancellationToken);
     }
 
     public async Task<LoginResult> RefreshAsync(string refreshToken, CancellationToken cancellationToken)
     {
-        var accountUuid = jwtService.ValidateToken(refreshToken, "refresh");
-        if (!accountUuid.HasValue)
+        var principal = jwt.ValidateRefreshToken(refreshToken);
+        if (principal is null)
         {
             throw new AppException(401, "Refresh token không hợp lệ hoặc đã hết hạn.");
         }
 
+        if (!Guid.TryParse(principal.FindFirstValue("uuid"), out var accountUuid))
+        {
+            throw new AppException(401, "Token không hợp lệ.");
+        }
+
         var account = await dbContext.Accounts
             .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Uuid == accountUuid.Value, cancellationToken);
-        if (account is null || account.DeletedAt.HasValue || account.Status != BaseStatus.Active ||
-            account.RoleUuid != AuthConstants.PatientRoleUuid)
+            .SingleOrDefaultAsync(item => item.Uuid == accountUuid, cancellationToken);
+        if (account is null || account.DeletedAt.HasValue || account.Status != BaseStatus.Active)
         {
             throw new AppException(401, "Phiên đăng nhập không còn hợp lệ.");
         }
 
-        var profile = await dbContext.PatientProfiles
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.AccountUuid == account.Uuid, cancellationToken);
-        if (profile is null)
-        {
-            throw new AppException(401, "Phiên đăng nhập không còn hợp lệ.");
-        }
+        var profile = await FindProfileAsync(account.Uuid, cancellationToken);
 
-        return CreateLoginResult(account, profile);
+        return await CreateLoginResultAsync(account, profile, cancellationToken);
     }
 
-    private LoginResult CreateLoginResult(Account account, PatientProfile profile)
+    private async Task<AuthProfileResult> FindProfileAsync(
+        Guid accountUuid,
+        CancellationToken cancellationToken)
     {
+        var patientProfile = await dbContext.PatientProfiles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                profile => profile.AccountUuid == accountUuid,
+                cancellationToken);
+
+        if (patientProfile is not null)
+        {
+            return new AuthPatientProfileResult(
+                patientProfile.Uuid,
+                patientProfile.AccountUuid!.Value,
+                patientProfile.Avatar,
+                patientProfile.Name,
+                patientProfile.Gender,
+                patientProfile.Birthdate,
+                patientProfile.MedicalCode,
+                patientProfile.Email);
+        }
+
+        var doctorProfile = await dbContext.DoctorProfiles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                profile => profile.AccountUuid == accountUuid,
+                cancellationToken);
+
+        if (doctorProfile is not null)
+        {
+            return new AuthDoctorProfileResult(
+                doctorProfile.Uuid,
+                doctorProfile.AccountUuid!.Value,
+                doctorProfile.Avatar,
+                doctorProfile.Slug,
+                doctorProfile.Name,
+                doctorProfile.Price,
+                doctorProfile.DepartmentDisplay,
+                doctorProfile.Introduction,
+                doctorProfile.Expertise,
+                doctorProfile.Specialty,
+                doctorProfile.Workplace,
+                doctorProfile.IsFeatured,
+                doctorProfile.HospitalUuid,
+                doctorProfile.CreatedAt,
+                doctorProfile.UpdatedAt,
+                doctorProfile.DeletedAt);
+        }
+
+        throw new AppException(401, "Không tìm thấy hồ sơ của tài khoản.");
+    }
+
+    private async Task<LoginResult> CreateLoginResultAsync(
+        Account account,
+        AuthProfileResult profile,
+        CancellationToken cancellationToken)
+    {
+        var role = account.RoleUuid.HasValue
+            ? await dbContext.Roles
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Uuid == account.RoleUuid.Value,
+                    cancellationToken)
+            : null;
+
+        var permissions = new HashSet<string>();
+        if (role is not null)
+        {
+            var assignedPermissions = await (
+                from rolePermission in dbContext.RolePermissions.AsNoTracking()
+                join permission in dbContext.Permissions.AsNoTracking()
+                    on rolePermission.PermissionUuid equals permission.Uuid
+                where rolePermission.RoleUuid == role.Uuid
+                select new { permission.Name, rolePermission.Action })
+                .ToListAsync(cancellationToken);
+
+            foreach (var permission in assignedPermissions)
+            {
+                permissions.Add(
+                    $"{permission.Name}:{permission.Action.ToString().ToLowerInvariant()}");
+            }
+        }
+
         var issuedAt = DateTimeOffset.UtcNow;
-        var accessExpiresAt = issuedAt.AddMinutes(_jwtOptions.AccessTokenMinutes);
-        var refreshExpiresAt = issuedAt.AddDays(_jwtOptions.RefreshTokenDays);
-        var accessToken = jwtService.CreateToken(
-            CreatePayload(account.Uuid, profile.Email, issuedAt, accessExpiresAt),
-            "access");
-        var refreshToken = jwtService.CreateToken(
-            CreatePayload(account.Uuid, profile.Email, issuedAt, refreshExpiresAt),
-            "refresh");
+        var accessExpiresAt = issuedAt.AddMinutes(_jwtSetting.AccessTokenMinutes);
+        var refreshExpiresAt = issuedAt.AddDays(_jwtSetting.RefreshTokenDays);
+
+        var accessToken = jwt.CreateAccessToken(new AccessTokenPayload(
+            account.Uuid,
+            role?.Name ?? "patient",
+            permissions));
+        var refreshToken = jwt.CreateRefreshToken(new RefreshTokenPayload(account.Uuid));
 
         return new LoginResult(
             new AuthSessionResult(
                 new AuthAccountResult(
                     account.Uuid,
                     account.Phone,
-                    account.RoleUuid!.Value,
+                    account.RoleUuid,
                     account.Status,
                     account.HospitalUuid,
                     account.CreatedAt,
                     account.UpdatedAt,
                     account.DeletedAt),
-                new AuthPatientProfileResult(
-                    profile.Uuid,
-                    profile.AccountUuid!.Value,
-                    profile.Avatar,
-                    profile.Name,
-                    profile.Gender,
-                    profile.Birthdate,
-                    profile.MedicalCode,
-                    profile.Email)),
+                profile),
             issuedAt,
             accessExpiresAt,
             refreshExpiresAt,
             accessToken,
             refreshToken);
     }
-
-    private static AuthTokenPayload CreatePayload(
-        Guid uuid,
-        string email,
-        DateTimeOffset issuedAt,
-        DateTimeOffset expiresAt) =>
-        new(uuid, email, new TimeDate(issuedAt.ToUnixTimeSeconds(), expiresAt.ToUnixTimeSeconds()));
 
     private static string NormalizePhone(string phone)
     {
@@ -208,19 +278,24 @@ public sealed record LoginResult(
 
 public sealed record AuthSessionResult(
     AuthAccountResult Account,
-    AuthPatientProfileResult PatientProfile
+    AuthProfileResult Profile
 );
 
 public sealed record AuthAccountResult(
     Guid Uuid,
     string Phone,
-    Guid RoleUuid,
+    Guid? RoleUuid,
     BaseStatus Status,
     Guid? HospitalUuid,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? DeletedAt
 );
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(AuthPatientProfileResult), "patient")]
+[JsonDerivedType(typeof(AuthDoctorProfileResult), "doctor")]
+public abstract record AuthProfileResult;
 
 public sealed record AuthPatientProfileResult(
     Guid Uuid,
@@ -231,4 +306,23 @@ public sealed record AuthPatientProfileResult(
     DateTime Birthdate,
     string MedicalCode,
     string Email
-);
+) : AuthProfileResult;
+
+public sealed record AuthDoctorProfileResult(
+    Guid Uuid,
+    Guid AccountUuid,
+    string Avatar,
+    string Slug,
+    string Name,
+    int Price,
+    string DepartmentDisplay,
+    string Introduction,
+    string Expertise,
+    string Specialty,
+    string Workplace,
+    bool IsFeatured,
+    Guid? HospitalUuid,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    DateTime? DeletedAt
+) : AuthProfileResult;
