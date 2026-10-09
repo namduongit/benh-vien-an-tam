@@ -13,6 +13,7 @@ import { registerMedicalServiceRoutes } from "@/lib/mocks/routes/medical-service
 import { registerPatientRoutes } from "@/lib/mocks/routes/patient-routes";
 import { registerPrescriptionRoutes } from "@/lib/mocks/routes/prescription-routes";
 import { registerReviewRoutes } from "@/lib/mocks/routes/review-routes";
+import { registerRoomRoutes } from "@/lib/mocks/routes/room-routes";
 
 export function attachMockApi(client: AxiosInstance) {
   const mock = new AxiosMockAdapter(client, {
@@ -32,6 +33,7 @@ export function attachMockApi(client: AxiosInstance) {
   registerPatientRoutes(mock);
   registerPrescriptionRoutes(mock);
   registerReviewRoutes(mock);
+  registerRoomRoutes(mock);
 
   return mock;
 }

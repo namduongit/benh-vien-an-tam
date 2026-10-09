@@ -9,7 +9,6 @@ import {
   PackageCheck,
   Pencil,
   Plus,
-  RotateCcw,
   ShieldAlert,
   Star,
   Stethoscope,
@@ -38,15 +37,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { HospitalWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
-import { mockHospitals } from "@/data/mocks/hospitals";
 import { markdownToPlainText } from "@/lib/format";
 import {
   hospitalService,
   type HospitalUpdateRequest,
 } from "@/lib/services/hospital/HospitalService";
+import { roomService } from "@/lib/services/hospital/RoomService";
 import { departmentService } from "@/lib/services/department/DepartmentService";
 import { medicalServiceService } from "@/lib/services/medical-service/MedicalServiceService";
-import { mockRooms } from "@/data/mocks/rooms";
 import {
   BaseStatus,
   RoomStatus,
@@ -134,7 +132,6 @@ function HospitalProfileScreen() {
     const controller = new AbortController();
     let active = true;
 
-    setState({ status: "loading" });
     hospitalService
       .getBranchProfile(controller.signal)
       .then((response) => {
@@ -169,7 +166,10 @@ function HospitalProfileScreen() {
     return (
       <ErrorState
         message={state.message}
-        onRetry={() => setAttempt((current) => current + 1)}
+        onRetry={() => {
+          setState({ status: "loading" });
+          setAttempt((current) => current + 1);
+        }}
       />
     );
   }
@@ -365,7 +365,7 @@ function AssignmentsScreen() {
       setState({
         status: "error",
         message:
-          "Màn hình này hiện chỉ hỗ trợ mock API. Hãy bật NEXT_PUBLIC_USE_MOCK_API để tiếp tục.",
+          "Màn hình này hiện chỉ hỗ trợ demo.",
       });
 
       return () => {
@@ -547,7 +547,7 @@ function AssignmentsScreen() {
       <PortalPageHeader
         eyebrow={`Phân bổ danh mục · ${state.hospital.Name}`}
         title="Chuyên khoa và dịch vụ"
-        description="Chọn danh mục đang được cung cấp tại chi nhánh. Thay đổi hiện được lưu bằng mock trong trình duyệt, chưa gửi tới backend."
+        description="Chọn danh mục đang được cung cấp tại chi nhánh. Thay đổi hiện demo."
         actions={
           <>
             <Button
@@ -691,72 +691,187 @@ function sameUuidSelection(left: string[], right: string[]) {
 }
 
 function RoomsScreen() {
-  const hospital = mockHospitals[0];
-  const [rooms, setRooms] = useState<Room[]>(() => mockRooms.filter((room) => room.HospitalUuid === hospital.Uuid));
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
-  const activeRooms = rooms.filter((room) => room.DeletedAt.getTime() === 0);
-  const deletedRooms = rooms.length - activeRooms.length;
-  const availableRooms = activeRooms.filter((room) => room.Status === RoomStatus.Available).length;
-  const occupiedRooms = activeRooms.filter((room) => room.Status === RoomStatus.Occupied).length;
-  const maintenanceRooms = activeRooms.filter((room) => room.Status === RoomStatus.Maintenance).length;
-  const atCapacity = activeRooms.length >= hospital.NumberOfRoom;
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | { status: "success"; hospital: Hospital; rooms: Room[] }
+  >(() =>
+    process.env.NEXT_PUBLIC_USE_MOCK_API === "false"
+      ? {
+          status: "error",
+          message: "Quản lý phòng khám hiện chỉ hỗ trợ mock API.",
+        }
+      : { status: "loading" },
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    if (process.env.NEXT_PUBLIC_USE_MOCK_API === "false") {
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    hospitalService
+      .getBranchProfile(controller.signal)
+      .then(async (response) => {
+        const hospital = response.Data;
+        const roomsResponse = await roomService.getAll(
+          hospital.Uuid,
+          { page: 1, pageSize: 100 },
+          controller.signal,
+        );
+
+        if (active) {
+          setState({
+            status: "success",
+            hospital,
+            rooms: roomsResponse.Data.Items,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setState({
+            status: "error",
+            message: getRoomError(
+              error,
+              "Không thể tải danh sách phòng khám. Vui lòng thử lại.",
+            ),
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [attempt]);
+
+  if (state.status === "loading") {
+    return <LoadingState label="Đang tải danh sách phòng khám" />;
+  }
+
+  if (state.status === "error") {
+    return (
+      <ErrorState
+        message={state.message}
+        onRetry={
+          process.env.NEXT_PUBLIC_USE_MOCK_API === "false"
+            ? undefined
+            : () => {
+                setState({ status: "loading" });
+                setAttempt((current) => current + 1);
+              }
+        }
+      />
+    );
+  }
+
+  const { hospital, rooms } = state;
+  const activeRooms = rooms;
+  const availableRooms = rooms.filter(
+    (room) => room.Status === RoomStatus.Available,
+  ).length;
+  const occupiedRooms = rooms.filter(
+    (room) => room.Status === RoomStatus.Occupied,
+  ).length;
+  const maintenanceRooms = rooms.filter(
+    (room) => room.Status === RoomStatus.Maintenance,
+  ).length;
+  const atCapacity = rooms.length >= hospital.NumberOfRoom;
 
   function openCreateForm() {
     setEditingRoom(null);
     setShowForm(true);
-    setMessage(atCapacity ? `Đã đạt giới hạn ${hospital.NumberOfRoom} phòng. Xóa một phòng trước khi thêm mới.` : "");
+    setMessage("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (state.status !== "success" || isSaving) return;
+
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name")).trim();
     const status = String(data.get("status")) as RoomStatus;
+    setIsSaving(true);
+    setMessage("");
 
-    if (!editingRoom && atCapacity) {
-      setMessage(`Không thể thêm: ${hospital.Name} chỉ được cấu hình tối đa ${hospital.NumberOfRoom} phòng.`);
-      return;
-    }
+    try {
+      if (editingRoom) {
+        const response = await roomService.update(hospital.Uuid, editingRoom.Uuid, {
+          Name: name,
+          Status: status,
+        });
+        setState((current) =>
+          current.status === "success"
+            ? {
+                ...current,
+                rooms: current.rooms.map((room) =>
+                  room.Uuid === response.Data.Uuid ? response.Data : room,
+                ),
+              }
+            : current,
+        );
+        setMessage(`Đã cập nhật ${name}.`);
+      } else {
+        const response = await roomService.create(hospital.Uuid, {
+          Name: name,
+          Status: status,
+        });
+        setState((current) =>
+          current.status === "success"
+            ? { ...current, rooms: [...current.rooms, response.Data] }
+            : current,
+        );
+        setMessage(`Đã thêm ${name}.`);
+      }
 
-    const now = new Date();
-    if (editingRoom) {
-      setRooms((current) => current.map((room) => room.Uuid === editingRoom.Uuid ? { ...room, Name: name, Status: status, UpdatedAt: now } : room));
-      setMessage(`Đã cập nhật ${name}.`);
-    } else {
-      setRooms((current) => [...current, {
-        Uuid: crypto.randomUUID(),
-        Name: name,
-        Status: status,
-        HospitalUuid: hospital.Uuid,
-        CreatedAt: now,
-        UpdatedAt: now,
-        DeletedAt: new Date(0),
-      }]);
-      setMessage(`Đã thêm ${name}.`);
+      setEditingRoom(null);
+      setShowForm(false);
+    } catch (error) {
+      setMessage(getRoomError(error, "Không thể lưu phòng. Vui lòng thử lại."));
+    } finally {
+      setIsSaving(false);
     }
-    setEditingRoom(null);
-    setShowForm(false);
   }
 
-  function softDelete(room: Room) {
-    setRooms((current) => current.map((item) => item.Uuid === room.Uuid ? { ...item, DeletedAt: new Date(), UpdatedAt: new Date() } : item));
-    setMessage(`Đã xóa ${room.Name}. Có thể khôi phục từ danh sách.`);
-    if (editingRoom?.Uuid === room.Uuid) setShowForm(false);
-  }
+  async function deleteRoom(room: Room) {
+    if (state.status !== "success" || isSaving) return;
+    setIsSaving(true);
+    setMessage("");
 
-  function restore(room: Room) {
-    if (atCapacity) {
-      setMessage(`Không thể khôi phục: đã dùng đủ ${hospital.NumberOfRoom}/${hospital.NumberOfRoom} phòng.`);
-      return;
+    try {
+      await roomService.delete(hospital.Uuid, room.Uuid);
+      setState((current) =>
+        current.status === "success"
+          ? {
+              ...current,
+              rooms: current.rooms.filter((item) => item.Uuid !== room.Uuid),
+            }
+          : current,
+      );
+      setMessage(`Đã xóa ${room.Name}.`);
+      if (editingRoom?.Uuid === room.Uuid) {
+        setEditingRoom(null);
+        setShowForm(false);
+      }
+    } catch (error) {
+      setMessage(getRoomError(error, "Không thể xóa phòng. Vui lòng thử lại."));
+    } finally {
+      setIsSaving(false);
     }
-    setRooms((current) => current.map((item) => item.Uuid === room.Uuid ? { ...item, DeletedAt: new Date(0), UpdatedAt: new Date() } : item));
-    setMessage(`Đã khôi phục ${room.Name}.`);
   }
 
   const roomRows = rooms.map((room) => {
-    const isDeleted = room.DeletedAt.getTime() !== 0;
     const status = room.Status === RoomStatus.Available
       ? <StatusPill tone="green">Khả dụng</StatusPill>
       : room.Status === RoomStatus.Occupied
@@ -765,50 +880,46 @@ function RoomsScreen() {
     return [
       <div key={`${room.Uuid}-name`}><p>{room.Name}</p><p className="mt-1 font-mono text-xs font-normal text-muted-foreground">{room.Uuid.slice(0, 8)}</p></div>,
       status,
-      <StatusPill key={`${room.Uuid}-record`} tone={isDeleted ? "red" : "green"}>{isDeleted ? "Đã xóa" : "Đang quản lý"}</StatusPill>,
       new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(room.UpdatedAt),
       <div key={`${room.Uuid}-actions`} className="flex gap-2">
-        {isDeleted ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => restore(room)} disabled={atCapacity}><RotateCcw />Khôi phục</Button>
-        ) : (
-          <>
-            <Button type="button" size="sm" variant="outline" onClick={() => { setEditingRoom(room); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => softDelete(room)}><Trash2 />Xóa</Button>
-          </>
-        )}
+        <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { setEditingRoom(room); setShowForm(true); setMessage(""); }}><Pencil />Sửa</Button>
+        <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => deleteRoom(room)}><Trash2 />Xóa</Button>
       </div>,
     ];
   });
 
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Vận hành cơ sở" title="Phòng khám" description={`Quản lý phòng của ${hospital.Name}; giới hạn lấy từ cấu hình Hospital.NumberOfRoom.`} actions={<Button type="button" size="sm" onClick={openCreateForm} disabled={atCapacity}><Plus />Thêm phòng</Button>} />
+      <PortalPageHeader eyebrow="Vận hành cơ sở" title="Phòng khám" description={`Quản lý phòng của ${hospital.Name}; giới hạn lấy từ cấu hình Hospital.NumberOfRoom.`} actions={<Button type="button" size="sm" onClick={openCreateForm} disabled={atCapacity || isSaving}><Plus />Thêm phòng</Button>} />
       <MetricGrid>
         <MetricCard label="Công suất cấu hình" value={`${activeRooms.length}/${hospital.NumberOfRoom}`} detail={atCapacity ? "Đã đạt giới hạn, không thể thêm phòng" : `Còn ${hospital.NumberOfRoom - activeRooms.length} vị trí phòng`} icon={<BedDouble className="size-5" />} tone={atCapacity ? "red" : "blue"} />
         <MetricCard label="Khả dụng" value={String(availableRooms)} detail="Sẵn sàng tiếp nhận" icon={<ClipboardCheck className="size-5" />} tone="green" />
         <MetricCard label="Đang sử dụng" value={String(occupiedRooms)} detail={`${maintenanceRooms} phòng đang bảo trì`} icon={<Activity className="size-5" />} tone="cyan" />
-        <MetricCard label="Đã xóa" value={String(deletedRooms)} detail="Không tính vào giới hạn phòng" icon={<Trash2 className="size-5" />} tone="amber" />
+        <MetricCard label="Bảo trì" value={String(maintenanceRooms)} detail="Tạm ngưng tiếp nhận" icon={<Trash2 className="size-5" />} tone="amber" />
       </MetricGrid>
       <PortalSection title="Sức chứa phòng" description={`${activeRooms.length} phòng đang quản lý trên tối đa ${hospital.NumberOfRoom} phòng`}>
         <div className="p-5">
           <div className="mb-2 flex items-center justify-between gap-4 text-sm"><span className="font-medium">Mức sử dụng cấu hình</span><span className={atCapacity ? "font-semibold text-red-600" : "text-muted-foreground"}>{Math.round((activeRooms.length / hospital.NumberOfRoom) * 100)}%</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${atCapacity ? "bg-red-500" : "bg-primary"}`} style={{ width: `${Math.min((activeRooms.length / hospital.NumberOfRoom) * 100, 100)}%` }} /></div>
-          <p className="mt-3 text-xs text-muted-foreground">Phòng đã xóa vẫn được lưu trong bảng để kiểm tra và khôi phục, nhưng không chiếm sức chứa.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Phòng đã xóa mềm không xuất hiện trong danh sách vận hành và không chiếm sức chứa.</p>
         </div>
       </PortalSection>
       {showForm ? (
         <PortalSection title={editingRoom ? `Chỉnh sửa ${editingRoom.Name}` : "Thêm phòng mới"} description={editingRoom ? "Cập nhật tên và trạng thái vận hành." : `Còn ${Math.max(hospital.NumberOfRoom - activeRooms.length, 0)} vị trí có thể tạo.`}>
           <form onSubmit={handleSubmit} className="grid gap-5 p-5 sm:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="room-name">Tên phòng</Label><Input id="room-name" name="name" defaultValue={editingRoom?.Name ?? ""} placeholder="Ví dụ: Phòng khám A2" required /></div>
-            <div className="space-y-2"><Label htmlFor="room-status">Trạng thái</Label><select id="room-status" name="status" defaultValue={editingRoom?.Status ?? RoomStatus.Available} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value={RoomStatus.Available}>Khả dụng</option><option value={RoomStatus.Occupied}>Đang sử dụng</option><option value={RoomStatus.Maintenance}>Bảo trì</option></select></div>
-            <div className="flex gap-2 sm:col-span-2"><Button type="submit" disabled={!editingRoom && atCapacity}>{editingRoom ? "Lưu thay đổi" : "Thêm phòng"}</Button><Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditingRoom(null); }}>Hủy</Button></div>
+            <div className="space-y-2"><Label htmlFor="room-name">Tên phòng</Label><Input id="room-name" name="name" maxLength={100} defaultValue={editingRoom?.Name ?? ""} placeholder="Ví dụ: Phòng khám A2" required disabled={isSaving} /></div>
+            <div className="space-y-2"><Label htmlFor="room-status">Trạng thái</Label><select id="room-status" name="status" defaultValue={editingRoom?.Status ?? RoomStatus.Available} disabled={isSaving} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value={RoomStatus.Available}>Khả dụng</option><option value={RoomStatus.Occupied}>Đang sử dụng</option><option value={RoomStatus.Maintenance}>Bảo trì</option></select></div>
+            <div className="flex gap-2 sm:col-span-2"><Button type="submit" disabled={isSaving || (!editingRoom && atCapacity)}>{isSaving ? "Đang lưu..." : editingRoom ? "Lưu thay đổi" : "Thêm phòng"}</Button><Button type="button" variant="outline" disabled={isSaving} onClick={() => { setShowForm(false); setEditingRoom(null); }}>Hủy</Button></div>
           </form>
         </PortalSection>
       ) : null}
-      {message ? <p role="status" className={`border px-4 py-3 text-sm ${message.startsWith("Không thể") || message.startsWith("Đã đạt") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</p> : null}
-      <PortalSection title="Danh sách phòng" description={`${activeRooms.length} đang quản lý, ${deletedRooms} đã xóa`}>
-        <PortalToolbar placeholder="Tìm tên hoặc mã phòng" filters={[{ label: "Tất cả trạng thái", options: ["Khả dụng", "Đang sử dụng", "Bảo trì", "Đã xóa"] }]} />
-        <PortalTable caption="Danh sách phòng khám" columns={["Phòng", "Trạng thái", "Bản ghi", "Cập nhật", "Thao tác"]} rows={roomRows} />
+      {message ? <p role={message.startsWith("Không thể") ? "alert" : "status"} className={`border px-4 py-3 text-sm ${message.startsWith("Không thể") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</p> : null}
+      <PortalSection title="Danh sách phòng" description={`${activeRooms.length} phòng đang quản lý`}>
+        {roomRows.length > 0 ? (
+          <PortalTable caption="Danh sách phòng khám" columns={["Phòng", "Trạng thái", "Cập nhật", "Thao tác"]} rows={roomRows} />
+        ) : (
+          <p className="p-8 text-center text-sm text-muted-foreground">Chi nhánh chưa có phòng khám nào.</p>
+        )}
       </PortalSection>
     </div>
   );
@@ -1005,6 +1116,14 @@ function getHospitalSaveError(
   return error instanceof Error && error.message
     ? error.message
     : fallback;
+}
+
+function getRoomError(error: unknown, fallback: string) {
+  if (isAxiosError<{ message?: string; Message?: string }>(error)) {
+    return error.response?.data?.message ?? error.response?.data?.Message ?? fallback;
+  }
+
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function Field({
