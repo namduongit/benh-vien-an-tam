@@ -18,4 +18,5 @@ export type DoctorListQuery = PaginationQuery & {
 
 export type MedicalServiceListQuery = PaginationQuery & {
   hospital?: Guid;
+  search?: string;
 };

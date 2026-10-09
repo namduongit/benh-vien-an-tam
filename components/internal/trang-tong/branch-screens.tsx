@@ -39,15 +39,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { HospitalWorkingScreen } from "@/components/internal/trang-tong/working-hours-screens";
 import { mockHospitals } from "@/data/mocks/hospitals";
+import { markdownToPlainText } from "@/lib/format";
 import {
   hospitalService,
   type HospitalUpdateRequest,
 } from "@/lib/services/hospital/HospitalService";
+import { departmentService } from "@/lib/services/department/DepartmentService";
+import { medicalServiceService } from "@/lib/services/medical-service/MedicalServiceService";
 import { mockRooms } from "@/data/mocks/rooms";
 import {
   BaseStatus,
   RoomStatus,
+  type Department,
   type Hospital,
+  type HospitalAssignmentSelection,
+  type MedicalService,
   type Room,
 } from "@/types/models";
 
@@ -233,28 +239,24 @@ function HospitalProfileScreen() {
   }
 
   return (
-    <div className="space-y-6">
+    <form
+      id="hospital-profile-form"
+      onSubmit={handleSubmit}
+      className="space-y-6"
+    >
       <PortalPageHeader
         eyebrow="Thiết lập chi nhánh"
         title="Thông tin chi nhánh"
         description="Cập nhật thông tin công khai của chi nhánh."
         actions={
-          <Button
-            type="submit"
-            form="hospital-profile-form"
-            disabled={isSaving}
-          >
+          <Button type="submit" disabled={isSaving}>
             {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
           </Button>
         }
       />
       <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
         <PortalSection title="Thông tin hiển thị">
-          <form
-            id="hospital-profile-form"
-            onSubmit={handleSubmit}
-            className="grid gap-5 p-5 sm:grid-cols-2"
-          >
+          <div className="grid gap-5 p-5 sm:grid-cols-2">
             <Field
               label="Tên cơ sở"
               value={draft.Name}
@@ -323,7 +325,7 @@ function HospitalProfileScreen() {
                 {state.saveError}
               </p>
             ) : null}
-          </form>
+          </div>
         </PortalSection>
         <PortalSection title="Trạng thái xuất bản">
           <DetailGrid>
@@ -333,34 +335,358 @@ function HospitalProfileScreen() {
           </DetailGrid>
         </PortalSection>
       </div>
-    </div>
+    </form>
   );
 }
 
 function AssignmentsScreen() {
+  const [attempt, setAttempt] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | {
+        status: "success";
+        hospital: Hospital;
+        departments: Department[];
+        services: MedicalService[];
+        assigned: HospitalAssignmentSelection;
+        selected: HospitalAssignmentSelection;
+        savedMessage?: string;
+        saveError?: string;
+      }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    if (process.env.NEXT_PUBLIC_USE_MOCK_API === "false") {
+      setState({
+        status: "error",
+        message:
+          "Màn hình này hiện chỉ hỗ trợ mock API. Hãy bật NEXT_PUBLIC_USE_MOCK_API để tiếp tục.",
+      });
+
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    setState({ status: "loading" });
+    hospitalService
+      .getBranchProfile(controller.signal)
+      .then(async (hospitalResponse) => {
+        const hospital = hospitalResponse.Data;
+        const [
+          departmentResponse,
+          serviceResponse,
+          assignedDepartmentResponse,
+          assignedServiceResponse,
+        ] = await Promise.all([
+          departmentService.getAll(
+            { page: 1, pageSize: 100 },
+            controller.signal,
+          ),
+          medicalServiceService.getAll(
+            { page: 1, pageSize: 100 },
+            controller.signal,
+          ),
+          hospitalService.getAssignedDepartments(
+            hospital.Uuid,
+            controller.signal,
+          ),
+          hospitalService.getAssignedMedicalServices(
+            hospital.Uuid,
+            controller.signal,
+          ),
+        ]);
+
+        if (!active) return;
+
+        const assigned = {
+          DepartmentUuids: assignedDepartmentResponse.Data.Items.map(
+            (department) => department.Uuid,
+          ),
+          MedicalServiceUuids: assignedServiceResponse.Data.Items.map(
+            (service) => service.Uuid,
+          ),
+        };
+        setState({
+          status: "success",
+          hospital,
+          departments: departmentResponse.Data.Items,
+          services: serviceResponse.Data.Items,
+          assigned,
+          selected: {
+            DepartmentUuids: [...assigned.DepartmentUuids],
+            MedicalServiceUuids: [...assigned.MedicalServiceUuids],
+          },
+        });
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            status: "error",
+            message: "Không thể tải chuyên khoa và dịch vụ. Vui lòng thử lại.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [attempt]);
+
+  if (state.status === "loading") {
+    return <LoadingState label="Đang tải chuyên khoa và dịch vụ chi nhánh" />;
+  }
+
+  if (state.status === "error") {
+    return (
+      <ErrorState
+        message={state.message}
+        onRetry={() => setAttempt((current) => current + 1)}
+      />
+    );
+  }
+
+  const hasChanges =
+    !sameUuidSelection(
+      state.assigned.DepartmentUuids,
+      state.selected.DepartmentUuids,
+    ) ||
+    !sameUuidSelection(
+      state.assigned.MedicalServiceUuids,
+      state.selected.MedicalServiceUuids,
+    );
+
+  function toggleAssignment(
+    key: keyof HospitalAssignmentSelection,
+    uuid: string,
+  ) {
+    setState((current) => {
+      if (current.status !== "success") return current;
+      const selected = new Set(current.selected[key]);
+      if (selected.has(uuid)) selected.delete(uuid);
+      else selected.add(uuid);
+
+      return {
+        ...current,
+        selected: { ...current.selected, [key]: [...selected] },
+        savedMessage: undefined,
+        saveError: undefined,
+      };
+    });
+  }
+
+  function resetChanges() {
+    setState((current) =>
+      current.status === "success"
+        ? {
+            ...current,
+            selected: {
+              DepartmentUuids: [...current.assigned.DepartmentUuids],
+              MedicalServiceUuids: [...current.assigned.MedicalServiceUuids],
+            },
+            savedMessage: undefined,
+            saveError: undefined,
+          }
+        : current,
+    );
+  }
+
+  async function saveAssignments() {
+    if (state.status !== "success" || !hasChanges) return;
+    setIsSaving(true);
+    setState((current) =>
+      current.status === "success"
+        ? { ...current, savedMessage: undefined, saveError: undefined }
+        : current,
+    );
+
+    try {
+      const response = await hospitalService.updateAssignments(
+        state.hospital.Uuid,
+        state.selected,
+      );
+      setState((current) =>
+        current.status === "success"
+          ? {
+              ...current,
+              assigned: response.Data,
+              selected: {
+                DepartmentUuids: [...response.Data.DepartmentUuids],
+                MedicalServiceUuids: [...response.Data.MedicalServiceUuids],
+              },
+              savedMessage: response.Message,
+            }
+          : current,
+      );
+    } catch (error) {
+      setState((current) =>
+        current.status === "success"
+          ? {
+              ...current,
+              saveError: getHospitalSaveError(
+                error,
+                "Không thể lưu phân bổ. Vui lòng thử lại.",
+              ),
+            }
+          : current,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Phân bổ danh mục" title="Chuyên khoa và dịch vụ" description="Chọn danh mục gốc được áp dụng tại chi nhánh; không thay đổi dữ liệu gốc toàn hệ thống." actions={<PortalAction variant="default">Lưu phân bổ</PortalAction>} />
+      <PortalPageHeader
+        eyebrow={`Phân bổ danh mục · ${state.hospital.Name}`}
+        title="Chuyên khoa và dịch vụ"
+        description="Chọn danh mục đang được cung cấp tại chi nhánh. Thay đổi hiện được lưu bằng mock trong trình duyệt, chưa gửi tới backend."
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!hasChanges || isSaving}
+              onClick={resetChanges}
+            >
+              Hủy thay đổi
+            </Button>
+            <Button
+              type="button"
+              disabled={!hasChanges || isSaving}
+              onClick={saveAssignments}
+            >
+              {isSaving ? "Đang lưu..." : "Lưu phân bổ"}
+            </Button>
+          </>
+        }
+      />
+      {state.savedMessage ? (
+        <p
+          role="status"
+          className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+        >
+          {state.savedMessage}
+        </p>
+      ) : null}
+      {state.saveError ? (
+        <p
+          role="alert"
+          className="border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          {state.saveError}
+        </p>
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-2">
-        <AssignmentList title="Chuyên khoa đang áp dụng" count="8/12 chuyên khoa" items={["Tim mạch", "Nhi khoa", "Nội tổng quát", "Cơ xương khớp", "Tai Mũi Họng", "Da liễu"]} />
-        <AssignmentList title="Dịch vụ đang cung cấp" count="18/26 dịch vụ" items={["Khám tim mạch chuyên sâu", "Siêu âm tổng quát", "Xét nghiệm máu", "Chụp X-quang", "Nội soi tiêu hóa", "Khám sức khỏe doanh nghiệp"]} />
+        <AssignmentList
+          title="Chuyên khoa"
+          items={state.departments}
+          selectedUuids={state.selected.DepartmentUuids}
+          disabled={isSaving}
+          onToggle={(uuid) => toggleAssignment("DepartmentUuids", uuid)}
+        />
+        <AssignmentList
+          title="Dịch vụ"
+          items={state.services}
+          selectedUuids={state.selected.MedicalServiceUuids}
+          disabled={isSaving}
+          onToggle={(uuid) => toggleAssignment("MedicalServiceUuids", uuid)}
+        />
       </div>
     </div>
   );
 }
 
-function AssignmentList({ title, count, items }: { title: string; count: string; items: string[] }) {
+function AssignmentList({
+  title,
+  items,
+  selectedUuids,
+  disabled,
+  onToggle,
+}: {
+  title: string;
+  items: Array<{ Uuid: string; Name: string; Description: string }>;
+  selectedUuids: string[];
+  disabled: boolean;
+  onToggle: (uuid: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filteredItems = items.filter((item) =>
+    `${item.Name} ${item.Description}`
+      .toLocaleLowerCase("vi")
+      .includes(query.trim().toLocaleLowerCase("vi")),
+  );
+
   return (
-    <PortalSection title={title} description={count} action={<PortalAction><Plus />Gán thêm</PortalAction>}>
-      <div className="divide-y">
-        {items.map((item, index) => (
-          <label key={item} className="flex cursor-pointer items-center justify-between gap-4 px-5 py-4 hover:bg-muted/35">
-            <span className="flex items-center gap-3 text-sm font-medium"><input type="checkbox" defaultChecked={index < 5} className="size-4 accent-primary" />{item}</span>
-            <StatusPill tone={index < 5 ? "green" : "neutral"}>{index < 5 ? "Đang dùng" : "Chưa dùng"}</StatusPill>
-          </label>
-        ))}
+    <PortalSection
+      title={title}
+      description={`${selectedUuids.length}/${items.length} đang áp dụng`}
+    >
+      <div className="border-b p-4">
+        <label className="block">
+          <span className="sr-only">Tìm {title.toLocaleLowerCase("vi")}</span>
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder={`Tìm ${title.toLocaleLowerCase("vi")}`}
+            className="h-9"
+          />
+        </label>
       </div>
+      {filteredItems.length > 0 ? (
+        <div className="divide-y">
+          {filteredItems.map((item) => {
+            const isSelected = selectedUuids.includes(item.Uuid);
+            return (
+              <label
+                key={item.Uuid}
+                className="flex cursor-pointer items-start justify-between gap-4 px-5 py-4 hover:bg-muted/35"
+              >
+                <span className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={disabled}
+                    onChange={() => onToggle(item.Uuid)}
+                    className="mt-1 size-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{item.Name}</span>
+                    <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                      {markdownToPlainText(item.Description)}
+                    </span>
+                  </span>
+                </span>
+                <StatusPill
+                  tone={isSelected ? "green" : "neutral"}
+                  className="shrink-0 whitespace-nowrap"
+                >
+                  {isSelected ? "Đang áp dụng" : "Chưa áp dụng"}
+                </StatusPill>
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="p-8 text-center text-sm text-muted-foreground">
+          Không tìm thấy {title.toLocaleLowerCase("vi")} phù hợp.
+        </p>
+      )}
     </PortalSection>
+  );
+}
+
+function sameUuidSelection(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((uuid) => right.includes(uuid))
   );
 }
 
@@ -664,18 +990,21 @@ function toHospitalProfileDraft(hospital: Hospital): HospitalProfileDraft {
   };
 }
 
-function getHospitalSaveError(error: unknown) {
+function getHospitalSaveError(
+  error: unknown,
+  fallback = "Không thể lưu thông tin chi nhánh. Vui lòng thử lại.",
+) {
   if (isAxiosError<{ Message?: string; message?: string }>(error)) {
     return (
       error.response?.data?.Message ??
       error.response?.data?.message ??
-      "Không thể lưu thông tin chi nhánh. Vui lòng thử lại."
+      fallback
     );
   }
 
   return error instanceof Error && error.message
     ? error.message
-    : "Không thể lưu thông tin chi nhánh. Vui lòng thử lại.";
+    : fallback;
 }
 
 function Field({

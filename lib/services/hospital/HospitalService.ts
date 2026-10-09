@@ -4,7 +4,12 @@ import { httpClient } from "@/lib/http/client";
 import type { ApiResponse, PaginatedData } from "@/lib/http/response";
 import type { HospitalDetail } from "@/types/details";
 import type { HospitalListQuery } from "@/types/discovery";
-import type { Hospital } from "@/types/models";
+import type {
+  Department,
+  Hospital,
+  HospitalAssignmentSelection,
+  MedicalService,
+} from "@/types/models";
 
 export type HospitalUpdateRequest = Pick<
   Hospital,
@@ -39,6 +44,45 @@ export class HospitalService {
       `/hospitals/${encodeURIComponent(uuid)}`,
       request,
     );
+
+    return response.data;
+  }
+
+  async getAssignedDepartments(
+    uuid: string,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse<PaginatedData<Department>>> {
+    const response = await httpClient.get<
+      ApiResponse<PaginatedData<Department>>
+    >(`/hospitals/${encodeURIComponent(uuid)}/departments`, {
+      params: { page: 1, pageSize: 100 },
+      signal,
+    });
+
+    return response.data;
+  }
+
+  async getAssignedMedicalServices(
+    uuid: string,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse<PaginatedData<MedicalService>>> {
+    const response = await httpClient.get<
+      ApiResponse<PaginatedData<MedicalService>>
+    >(`/hospitals/${encodeURIComponent(uuid)}/medical-services`, {
+      params: { page: 1, pageSize: 100 },
+      signal,
+    });
+
+    return response.data;
+  }
+
+  async updateAssignments(
+    uuid: string,
+    selection: HospitalAssignmentSelection,
+  ): Promise<ApiResponse<HospitalAssignmentSelection>> {
+    const response = await httpClient.put<
+      ApiResponse<HospitalAssignmentSelection>
+    >(`/hospitals/${encodeURIComponent(uuid)}/assignments`, selection);
 
     return response.data;
   }

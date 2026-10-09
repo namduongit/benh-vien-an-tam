@@ -167,9 +167,11 @@ export function PortalTable({
 export function StatusPill({
   children,
   tone = "neutral",
+  className,
 }: {
   children: ReactNode;
   tone?: "green" | "amber" | "red" | "blue" | "neutral" | "purple";
+  className?: string;
 }) {
   const tones = {
     green: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -180,7 +182,7 @@ export function StatusPill({
     neutral: "border-slate-200 bg-slate-50 text-slate-600",
   };
 
-  return <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold", tones[tone])}>{children}</span>;
+  return <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold", tones[tone], className)}>{children}</span>;
 }
 
 export function ProgressList({
