@@ -11,5 +11,5 @@ public class MomoSetting
     public string ExtraData = "";
 
     // Endpoint
-    public static string MOMO_CREATE = "https://test-payment.momo.vn/v2/gateway/api/create";
+    public string MOMO_CREATE = "https://test-payment.momo.vn/v2/gateway/api/create";
 }
