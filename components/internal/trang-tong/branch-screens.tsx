@@ -12,9 +12,7 @@ import {
   RotateCcw,
   ShieldAlert,
   Star,
-  Stethoscope,
   Trash2,
-  UsersRound,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
@@ -44,6 +42,11 @@ import {
   type HospitalUpdateRequest,
 } from "@/lib/services/hospital/HospitalService";
 import { roomService } from "@/lib/services/hospital/RoomService";
+import {
+  staffService,
+  type HospitalStaffMember,
+  type StaffRoleCode,
+} from "@/lib/services/hospital/StaffService";
 import { departmentService } from "@/lib/services/department/DepartmentService";
 import { medicalServiceService } from "@/lib/services/medical-service/MedicalServiceService";
 import {
@@ -1044,17 +1047,494 @@ function RoomsScreen() {
 }
 
 function StaffAccountsScreen() {
-  return <OperationalTable eyebrow="Nhân sự chi nhánh" title="Tài khoản nhân sự" description="Tạo và quản lý Doctor, Staff, Warehouse Manager trong đúng phạm vi chi nhánh." action="Thêm nhân sự" metrics={[
-    ["Tổng nhân sự", "86", "82 đang hoạt động", <UsersRound key="1" className="size-5" />],
-    ["Bác sĩ", "42", "8 chuyên khoa", <Stethoscope key="2" className="size-5" />],
-    ["Tiếp nhận", "31", "3 ca làm việc", <ClipboardCheck key="3" className="size-5" />],
-    ["Kho thuốc", "13", "2 quản lý chính", <PackageCheck key="4" className="size-5" />],
-  ]} columns={["Tài khoản", "Role", "Bộ phận", "Trạng thái", "Đăng nhập cuối"]} rows={[
-    ["BS. Nguyễn Hoàng Minh", <StatusPill key="1" tone="blue">DOCTOR</StatusPill>, "Tim mạch", <StatusPill key="2" tone="green">Hoạt động</StatusPill>, "23/09 08:05"],
-    ["Trần Thu Hà", <StatusPill key="3">STAFF</StatusPill>, "Tiếp nhận", <StatusPill key="4" tone="green">Hoạt động</StatusPill>, "23/09 06:48"],
-    ["Lê Văn Tuấn", <StatusPill key="5" tone="amber">WAREHOUSE_MANAGER</StatusPill>, "Kho thuốc", <StatusPill key="6" tone="green">Hoạt động</StatusPill>, "23/09 07:12"],
-    ["BS. Phạm Ngọc Anh", <StatusPill key="7" tone="blue">DOCTOR</StatusPill>, "Nhi khoa", <StatusPill key="8" tone="red">Vô hiệu hóa</StatusPill>, "18/09 16:20"],
-  ]} />;
+  const [attempt, setAttempt] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<StaffRoleCode | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<BaseStatus | "all">("all");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [roleCode, setRoleCode] = useState<StaffRoleCode>("Staff");
+  const [doctorName, setDoctorName] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [doctorPrice, setDoctorPrice] = useState("");
+  const [departmentUuid, setDepartmentUuid] = useState("");
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | {
+        status: "success";
+        hospital: Hospital;
+        staff: HospitalStaffMember[];
+        departments: Department[];
+      }
+  >(() =>
+    process.env.NEXT_PUBLIC_USE_MOCK_API === "false"
+      ? {
+          status: "error",
+          message: "Quản lý nhân sự hiện chỉ hỗ trợ mock API.",
+        }
+      : { status: "loading" },
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    if (process.env.NEXT_PUBLIC_USE_MOCK_API === "false") {
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    hospitalService
+      .getBranchProfile(controller.signal)
+      .then(async ({ Data: hospital }) => {
+        const [staffResponse, departmentsResponse] = await Promise.all([
+          staffService.getAll(
+            hospital.Uuid,
+            { page: 1, pageSize: 100 },
+            controller.signal,
+          ),
+          hospitalService.getAssignedDepartments(hospital.Uuid, controller.signal),
+        ]);
+        const remainingPages = await Promise.all(
+          Array.from(
+            { length: Math.max(staffResponse.Data.TotalPages - 1, 0) },
+            (_, index) =>
+              staffService.getAll(
+                hospital.Uuid,
+                { page: index + 2, pageSize: 100 },
+                controller.signal,
+              ),
+          ),
+        );
+
+        if (active) {
+          setState({
+            status: "success",
+            hospital,
+            staff: [
+              ...staffResponse.Data.Items,
+              ...remainingPages.flatMap((page) => page.Data.Items),
+            ],
+            departments: departmentsResponse.Data.Items,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setState({
+            status: "error",
+            message: getStaffError(
+              error,
+              "Không thể tải nhân sự chi nhánh. Vui lòng thử lại.",
+            ),
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [attempt]);
+
+  if (state.status === "loading") {
+    return <LoadingState label="Đang tải danh sách nhân sự" />;
+  }
+  if (state.status === "error") {
+    return (
+      <ErrorState
+        message={state.message}
+        onRetry={
+          process.env.NEXT_PUBLIC_USE_MOCK_API === "false"
+            ? undefined
+            : () => {
+                setState({ status: "loading" });
+                setAttempt((current) => current + 1);
+              }
+        }
+      />
+    );
+  }
+
+  const { hospital, staff, departments } = state;
+  const normalizedSearch = search.trim().toLocaleLowerCase("vi");
+  const filteredStaff = staff.filter((member) => {
+    const matchesRole = roleFilter === "all" || member.RoleCode === roleFilter;
+    const matchesStatus =
+      statusFilter === "all" || member.Status === statusFilter;
+    const searchText =
+      `${member.DisplayName} ${member.Phone} ${member.RoleName} ${member.DepartmentName ?? ""}`.toLocaleLowerCase("vi");
+    return (
+      matchesRole &&
+      matchesStatus &&
+      (!normalizedSearch || searchText.includes(normalizedSearch))
+    );
+  });
+  function resetForm() {
+    setPhone("");
+    setPassword("");
+    setRoleCode("Staff");
+    setDoctorName("");
+    setSpecialty("");
+    setDoctorPrice("");
+    setDepartmentUuid("");
+  }
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (state.status !== "success" || isSaving) return;
+
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const response = await staffService.create(hospital.Uuid, {
+        Phone: phone.trim(),
+        Password: password,
+        RoleCode: roleCode,
+        ...(roleCode === "Doctor"
+          ? {
+              Name: doctorName.trim(),
+              Specialty: specialty.trim(),
+              Price: Number(doctorPrice),
+              DepartmentUuid: departmentUuid,
+            }
+          : {}),
+      });
+      setState((current) =>
+        current.status === "success"
+          ? { ...current, staff: [response.Data, ...current.staff] }
+          : current,
+      );
+      setMessage(`Đã tạo tài khoản ${response.Data.DisplayName}.`);
+      setShowForm(false);
+      resetForm();
+    } catch (error) {
+      setMessage(
+        getStaffError(error, "Không thể tạo tài khoản. Vui lòng thử lại."),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function toggleStatus(member: HospitalStaffMember) {
+    if (state.status !== "success" || isSaving) return;
+    const nextStatus =
+      member.Status === BaseStatus.Active
+        ? BaseStatus.InActive
+        : BaseStatus.Active;
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const response = await staffService.updateStatus(
+        hospital.Uuid,
+        member.AccountUuid,
+        nextStatus,
+      );
+      setState((current) =>
+        current.status === "success"
+          ? {
+              ...current,
+              staff: current.staff.map((item) =>
+                item.AccountUuid === response.Data.AccountUuid
+                  ? {
+                      ...item,
+                      Status: response.Data.Status,
+                      UpdatedAt: response.Data.UpdatedAt,
+                    }
+                  : item,
+              ),
+            }
+          : current,
+      );
+      setMessage(
+        nextStatus === BaseStatus.Active
+          ? `Đã kích hoạt ${member.DisplayName}.`
+          : `Đã vô hiệu hóa ${member.DisplayName}.`,
+      );
+    } catch (error) {
+      setMessage(
+        getStaffError(error, "Không thể cập nhật tài khoản. Vui lòng thử lại."),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const rows = filteredStaff.map((member) => [
+    <div key={`${member.AccountUuid}-identity`}>
+      <p className="font-medium">{member.DisplayName}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{member.Phone}</p>
+    </div>,
+    <StatusPill
+      key={`${member.AccountUuid}-role`}
+      tone={member.RoleCode === "Doctor" ? "blue" : member.RoleCode === "Staff" ? "green" : "amber"}
+    >
+      {getStaffRoleLabel(member.RoleCode)}
+    </StatusPill>,
+    member.DepartmentName ??
+      (member.RoleCode === "WarehouseManager"
+        ? "Kho thuốc"
+        : member.RoleCode === "Staff"
+          ? "Tiếp nhận"
+          : "Chưa gán chuyên khoa"),
+    <StatusPill
+      key={`${member.AccountUuid}-status`}
+      tone={member.Status === BaseStatus.Active ? "green" : "red"}
+    >
+      {member.Status === BaseStatus.Active ? "Hoạt động" : "Vô hiệu hóa"}
+    </StatusPill>,
+    new Intl.DateTimeFormat("vi-VN", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(member.UpdatedAt),
+    <Button
+      key={`${member.AccountUuid}-action`}
+      type="button"
+      size="sm"
+      variant={member.Status === BaseStatus.Active ? "outline" : "default"}
+      disabled={isSaving}
+      onClick={() => toggleStatus(member)}
+    >
+      {member.Status === BaseStatus.Active ? "Vô hiệu hóa" : "Kích hoạt"}
+    </Button>,
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <PortalPageHeader
+        eyebrow="Nhân sự chi nhánh"
+        title="Tài khoản nhân sự"
+        description={`Quản lý Doctor, Staff và Warehouse Manager thuộc ${hospital.Name}.`}
+        actions={
+          <Button
+            type="button"
+            size="sm"
+            disabled={isSaving}
+            onClick={() => {
+              resetForm();
+              setShowForm((current) => !current);
+              setMessage("");
+            }}
+          >
+            <Plus />
+            Thêm nhân sự
+          </Button>
+        }
+      />
+      {message ? (
+        <p
+          role={message.startsWith("Không thể") ? "alert" : "status"}
+          className={`border px-4 py-3 text-sm ${message.startsWith("Không thể") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+        >
+          {message}
+        </p>
+      ) : null}
+      {showForm ? (
+        <PortalSection
+          title="Tạo tài khoản nhân sự"
+          description="Tài khoản được gán vào đúng chi nhánh hiện tại. Mật khẩu được dùng để khởi tạo thông tin đăng nhập."
+        >
+          <form onSubmit={handleCreate} className="grid gap-4 p-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="staff-phone">Số điện thoại</Label>
+              <Input
+                id="staff-phone"
+                type="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.currentTarget.value)}
+                pattern="[0-9+() -]{8,20}"
+                maxLength={20}
+                required
+                disabled={isSaving}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="staff-password">Mật khẩu khởi tạo</Label>
+              <Input
+                id="staff-password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.currentTarget.value)}
+                minLength={8}
+                maxLength={128}
+                required
+                disabled={isSaving}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="staff-role">Vai trò</Label>
+              <select
+                id="staff-role"
+                value={roleCode}
+                onChange={(event) =>
+                  setRoleCode(event.currentTarget.value as StaffRoleCode)
+                }
+                disabled={isSaving}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="Doctor">Bác sĩ (Doctor)</option>
+                <option value="Staff">Tiếp nhận (Staff)</option>
+                <option value="WarehouseManager">Quản lý kho</option>
+              </select>
+            </div>
+            {roleCode === "Doctor" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-doctor-name">Họ tên bác sĩ</Label>
+                  <Input
+                    id="staff-doctor-name"
+                    value={doctorName}
+                    onChange={(event) =>
+                      setDoctorName(event.currentTarget.value)
+                    }
+                    minLength={2}
+                    maxLength={100}
+                    required
+                    disabled={isSaving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-specialty">Chuyên môn</Label>
+                  <Input
+                    id="staff-specialty"
+                    value={specialty}
+                    onChange={(event) =>
+                      setSpecialty(event.currentTarget.value)
+                    }
+                    minLength={2}
+                    maxLength={100}
+                    required
+                    disabled={isSaving}
+                    placeholder="Ví dụ: Nội khoa"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-doctor-price">Phí khám (VNĐ)</Label>
+                  <Input
+                    id="staff-doctor-price"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={doctorPrice}
+                    onChange={(event) =>
+                      setDoctorPrice(event.currentTarget.value)
+                    }
+                    required
+                    disabled={isSaving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-department">Chuyên khoa</Label>
+                  <select
+                    id="staff-department"
+                    value={departmentUuid}
+                    onChange={(event) =>
+                      setDepartmentUuid(event.currentTarget.value)
+                    }
+                    required
+                    disabled={isSaving || departments.length === 0}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="">Chọn chuyên khoa</option>
+                    {departments.map((department) => (
+                      <option key={department.Uuid} value={department.Uuid}>
+                        {department.Name}
+                      </option>
+                    ))}
+                  </select>
+                  {departments.length === 0 ? (
+                    <p className="text-xs text-red-600">
+                      Chi nhánh chưa được gán chuyên khoa nào.
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+            <div className="flex gap-2 sm:col-span-2">
+              <Button
+                type="submit"
+                disabled={isSaving || (roleCode === "Doctor" && departments.length === 0)}
+              >
+                {isSaving ? "Đang tạo..." : "Tạo tài khoản"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSaving}
+                onClick={() => {
+                  setShowForm(false);
+                  resetForm();
+                }}
+              >
+                Hủy
+              </Button>
+            </div>
+          </form>
+        </PortalSection>
+      ) : null}
+      <PortalSection
+        title="Danh sách nhân sự"
+        description={`${filteredStaff.length} nhân sự thuộc chi nhánh`}
+      >
+        <div className="grid gap-3 border-b bg-[#fbfdfe] p-4 sm:grid-cols-3">
+          <Input
+            aria-label="Tìm nhân sự"
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            placeholder="Tìm tên, số điện thoại, chuyên khoa"
+            className="h-9"
+          />
+          <select
+            aria-label="Lọc theo vai trò"
+            value={roleFilter}
+            onChange={(event) =>
+              setRoleFilter(event.currentTarget.value as StaffRoleCode | "all")
+            }
+            className="h-9 rounded-md border bg-white px-3 text-sm"
+          >
+            <option value="all">Tất cả vai trò</option>
+            <option value="Doctor">Bác sĩ (Doctor)</option>
+            <option value="Staff">Tiếp nhận (Staff)</option>
+            <option value="WarehouseManager">Quản lý kho</option>
+          </select>
+          <select
+            aria-label="Lọc theo trạng thái"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.currentTarget.value as BaseStatus | "all")
+            }
+            className="h-9 rounded-md border bg-white px-3 text-sm"
+          >
+            <option value="all">Mọi trạng thái</option>
+            <option value={BaseStatus.Active}>Hoạt động</option>
+            <option value={BaseStatus.InActive}>Vô hiệu hóa</option>
+          </select>
+        </div>
+        {rows.length > 0 ? (
+          <PortalTable
+            caption="Danh sách tài khoản nhân sự chi nhánh"
+            columns={["Nhân sự", "Vai trò", "Bộ phận", "Trạng thái", "Cập nhật", "Thao tác"]}
+            rows={rows}
+          />
+        ) : (
+          <p className="p-8 text-center text-sm text-muted-foreground">
+            {staff.length
+              ? "Không có nhân sự phù hợp với bộ lọc."
+              : "Chi nhánh chưa có tài khoản nhân sự."}
+          </p>
+        )}
+      </PortalSection>
+    </div>
+  );
 }
 
 const appointmentRows = [
@@ -1255,6 +1735,41 @@ function getRoomError(error: unknown, fallback: string) {
   }
 
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function getStaffError(error: unknown, fallback: string) {
+  if (isAxiosError<{ error?: string; message?: string }>(error)) {
+    switch (error.response?.data?.error) {
+      case "PHONE_ALREADY_EXISTS":
+        return "Số điện thoại này đã được sử dụng cho một tài khoản khác.";
+      case "DEPARTMENT_NOT_ASSIGNED":
+        return "Chuyên khoa đã chọn chưa được gán cho chi nhánh.";
+      case "DOCTOR_PROFILE_REQUIRED":
+        return "Vui lòng nhập họ tên, chuyên môn và chuyên khoa cho bác sĩ.";
+      case "STAFF_ROLES_NOT_CONFIGURED":
+        return "Backend chưa cấu hình đầy đủ các vai trò nhân sự.";
+      case "INVALID_STAFF_ROLE":
+        return "Vai trò nhân sự không hợp lệ.";
+      default:
+        return error.response?.data?.message
+          ? `Không thể thực hiện: ${error.response.data.message}`
+          : fallback;
+    }
+  }
+  return error instanceof Error && error.message
+    ? `Không thể thực hiện: ${error.message}`
+    : fallback;
+}
+
+function getStaffRoleLabel(roleCode: StaffRoleCode) {
+  switch (roleCode) {
+    case "Doctor":
+      return "Bác sĩ";
+    case "Staff":
+      return "Tiếp nhận";
+    case "WarehouseManager":
+      return "Quản lý kho";
+  }
 }
 
 function Field({

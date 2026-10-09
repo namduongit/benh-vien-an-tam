@@ -23,7 +23,12 @@ public sealed class DoctorController(DBContext dbContext) : ControllerBase
         pageSize = Math.Min(pageSize, 100);
 
         var query = dbContext.DoctorProfiles
-            .Where(x => x.DeletedAt == null)
+            .Where(x => x.DeletedAt == null &&
+                (!x.AccountUuid.HasValue ||
+                 dbContext.Accounts.Any(account =>
+                     account.Uuid == x.AccountUuid.Value &&
+                     account.DeletedAt == null &&
+                     account.Status == api.Model.Enum.BaseStatus.Active)))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -87,7 +92,13 @@ public sealed class DoctorController(DBContext dbContext) : ControllerBase
     public async Task<IActionResult> GetDoctor(Guid id, CancellationToken cancellationToken = default)
     {
         var doctor = await dbContext.DoctorProfiles
-            .Where(x => x.Uuid == id && x.DeletedAt == null)
+            .Where(x => x.Uuid == id &&
+                x.DeletedAt == null &&
+                (!x.AccountUuid.HasValue ||
+                 dbContext.Accounts.Any(account =>
+                     account.Uuid == x.AccountUuid.Value &&
+                     account.DeletedAt == null &&
+                     account.Status == api.Model.Enum.BaseStatus.Active)))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (doctor is null)
