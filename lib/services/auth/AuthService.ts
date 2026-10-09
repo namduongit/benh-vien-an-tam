@@ -64,6 +64,22 @@ type ApiEnvelope<T> = {
   data?: T;
 };
 
+type AuthProfileResponse =
+  | {
+      type: "patient";
+      uuid: string;
+      accountUuid: string;
+      avatar: string;
+      name: string;
+      gender: Gender | number;
+      birthdate: string;
+      medicalCode: string;
+      email: string;
+    }
+  | {
+      type: "doctor";
+    };
+
 type AuthSessionResponse = {
   account: {
     uuid: string;
@@ -75,20 +91,17 @@ type AuthSessionResponse = {
     updatedAt: string;
     deletedAt: string | null;
   };
-  patientProfile: {
-    uuid: string;
-    accountUuid: string;
-    avatar: string;
-    name: string;
-    gender: Gender | number;
-    birthdate: string;
-    medicalCode: string;
-    email: string;
-  };
+  profile: AuthProfileResponse;
 };
 
 function mapSession(response: AuthSessionResponse): AuthSession {
-  const { account, patientProfile } = response;
+  const { account, profile } = response;
+
+  if (profile.type !== "patient") {
+    throw new AuthServiceError(
+      "Tài khoản này không thuộc cổng dành cho người bệnh.",
+    );
+  }
 
   return {
     Account: {
@@ -102,14 +115,14 @@ function mapSession(response: AuthSessionResponse): AuthSession {
       DeletedAt: account.deletedAt ? new Date(account.deletedAt) : new Date(0),
     },
     PatientProfile: {
-      Uuid: patientProfile.uuid,
-      AccountUuid: patientProfile.accountUuid,
-      Avatar: patientProfile.avatar,
-      Name: patientProfile.name,
-      Gender: mapGender(patientProfile.gender),
-      Birthdate: new Date(patientProfile.birthdate),
-      MedicalCode: patientProfile.medicalCode,
-      Email: patientProfile.email,
+      Uuid: profile.uuid,
+      AccountUuid: profile.accountUuid,
+      Avatar: profile.avatar,
+      Name: profile.name,
+      Gender: mapGender(profile.gender),
+      Birthdate: new Date(profile.birthdate),
+      MedicalCode: profile.medicalCode,
+      Email: profile.email,
     },
   };
 }
