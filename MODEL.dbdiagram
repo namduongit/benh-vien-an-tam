@@ -15,13 +15,12 @@ Table Account {
   Phone string
   Password string
   RoleUuid Guid
-  
   Status BaseStatus
 
   HospitalUuid Guid [null]
 
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -89,7 +88,7 @@ Table Hospital {
   Status BaseStatus
 
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -109,7 +108,7 @@ Table Room {
   HospitalUuid Guid
 
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -125,7 +124,7 @@ Table Department {
   Status BaseStatus
   
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -159,7 +158,7 @@ Table MedicalService {
   IsFeatured bool
   
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -247,7 +246,7 @@ Table Medicine {
   InsuranceCap float
 
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -280,7 +279,7 @@ Table Provider {
   Status ProviderStatus
 
   CreatedAt Date
-  UpdatedAt Date 
+  UpdatedAt Date
   DeletedAt Date
 }
 
@@ -398,10 +397,12 @@ Ref: PrescriptionDetail.PrescriptionUuid > Prescription.Uuid
 Ref: PrescriptionDetail.MedicineUuid > Medicine.Uuid
 
 Enum AppointmentStatus {
-  Pending
-  Approved
-  Done
-  Cancelled
+  Approved     // Đã xác nhận
+  Pending      // Chờ xác nhận
+  Unconfirmed  // Không xác nhận
+  CheckedIn    // Đang khám
+  Done         // Đã hoàn thành
+  Cancelled    // Đã hủy
 }
 
 Enum AppointmentType {
@@ -442,11 +443,18 @@ Ref: Appointment.MedicalServiceUuid > MedicalService.Uuid
 Ref: Appointment.RoomUuid > Room.Uuid
 Ref: Appointment.TimeSlot > TimeWorking.Uuid
 
+Enum AppointmentMedicalServiceStatus {
+	Processing
+	Done
+}
+
 Table AppointmentMedicalService {
   Uuid Guid
   AppointmentUuid Guid
   MedicalService Guid
   Price int
+  Description  // Lưu kết quả
+  Status AppointmentMedicalServiceStatus // Trạng thái
 }
 
 Ref: AppointmentMedicalService.AppointmentUuid > Appointment.Uuid

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { AssignedCaseDetailScreen } from "@/components/internal/trang-tong/assigned-case-detail-screen";
+import { AssignedCaseDetailScreen } from "@/components/internal/trang-tong/clinical/assigned-cases-screen";
 
 export const metadata: Metadata = { title: "Chi tiết ca khám" };
 

@@ -16,13 +16,14 @@ import { registerPrescriptionRoutes } from "@/lib/mocks/routes/prescription-rout
 import { registerReviewRoutes } from "@/lib/mocks/routes/review-routes";
 import { registerRoomRoutes } from "@/lib/mocks/routes/room-routes";
 import { registerStaffRoutes } from "@/lib/mocks/routes/staff-routes";
-
+import { registerDoctorPrescriptionRoutes } from "@/lib/mocks/routes/prescription-doc-routes";
 export function attachMockApi(client: AxiosInstance) {
   const mock = new AxiosMockAdapter(client, {
     delayResponse: 250,
     onNoMatch: "throwException",
   });
 
+  registerDoctorPrescriptionRoutes(mock);
   registerAuthRoutes(mock);
   registerAppointmentRoutes(mock);
   registerBranchAppointmentRoutes(mock);
