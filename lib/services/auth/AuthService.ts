@@ -196,17 +196,6 @@ export class AuthService {
   }
 
   async getCurrentSession(): Promise<AuthSession | null> {
-    if (process.env.NEXT_PUBLIC_USE_MOCK_API !== "false") {
-      const storedSession = localStorage.getItem(sessionStorageKey);
-      if (!storedSession) return null;
-
-      const session = hydrateSession(storedSession);
-      if (!session) {
-        localStorage.removeItem(sessionStorageKey);
-      }
-      return session;
-    }
-
     try {
       const response = await httpClient.post<ApiEnvelope<AuthSessionResponse>>(
         "/auth/refresh",

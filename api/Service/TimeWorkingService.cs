@@ -33,7 +33,12 @@ public sealed class TimeWorkingService(DBContext dbContext)
         CancellationToken cancellationToken)
     {
         ValidateRange(request.StartTime, request.EndTime);
-        await EnsureSlotAvailableAsync(request, null, cancellationToken);
+        await EnsureSlotAvailableAsync(
+            request.DayOfWeek,
+            request.StartTime,
+            request.EndTime,
+            null,
+            cancellationToken);
 
         var now = DateTime.UtcNow;
         var working = new TimeWorking
@@ -42,7 +47,7 @@ public sealed class TimeWorkingService(DBContext dbContext)
             DayOfWeek = request.DayOfWeek,
             StartTime = request.StartTime,
             EndTime = request.EndTime,
-            Status = request.Status,
+            Status = request.Status ?? Model.Enum.BaseStatus.Active,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -62,13 +67,19 @@ public sealed class TimeWorkingService(DBContext dbContext)
             cancellationToken);
         if (working is null) return null;
 
+        var dayOfWeek = request.DayOfWeek ?? working.DayOfWeek;
         ValidateRange(request.StartTime, request.EndTime);
-        await EnsureSlotAvailableAsync(request, uuid, cancellationToken);
+        await EnsureSlotAvailableAsync(
+            dayOfWeek,
+            request.StartTime,
+            request.EndTime,
+            uuid,
+            cancellationToken);
 
-        working.DayOfWeek = request.DayOfWeek;
+        working.DayOfWeek = dayOfWeek;
         working.StartTime = request.StartTime;
         working.EndTime = request.EndTime;
-        working.Status = request.Status;
+        working.Status = request.Status ?? working.Status;
         working.UpdatedAt = DateTime.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -102,7 +113,12 @@ public sealed class TimeWorkingService(DBContext dbContext)
             EndTime = working.EndTime,
             Status = working.Status,
         };
-        await EnsureSlotAvailableAsync(request, uuid, cancellationToken);
+        await EnsureSlotAvailableAsync(
+            request.DayOfWeek,
+            request.StartTime,
+            request.EndTime,
+            uuid,
+            cancellationToken);
 
         working.DeletedAt = null;
         working.UpdatedAt = DateTime.UtcNow;
@@ -111,14 +127,16 @@ public sealed class TimeWorkingService(DBContext dbContext)
     }
 
     private async Task EnsureSlotAvailableAsync(
-        TimeWorkingRequest request,
+        int dayOfWeek,
+        TimeOnly startTime,
+        TimeOnly endTime,
         Guid? excludedUuid,
         CancellationToken cancellationToken)
     {
         var exists = await dbContext.TimeWorkings.AnyAsync(
-            item => item.DayOfWeek == request.DayOfWeek &&
-                    item.StartTime == request.StartTime &&
-                    item.EndTime == request.EndTime &&
+            item => item.DayOfWeek == dayOfWeek &&
+                    item.StartTime == startTime &&
+                    item.EndTime == endTime &&
                     item.DeletedAt == null &&
                     (!excludedUuid.HasValue || item.Uuid != excludedUuid.Value),
             cancellationToken);

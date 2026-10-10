@@ -45,7 +45,7 @@ public sealed class TimeWorkingController(DBContext dbContext) : ControllerBase
                 DayOfWeek = x.DayOfWeek,
                 StartTime = x.StartTime,
                 EndTime = x.EndTime,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })
@@ -91,7 +91,7 @@ public sealed class TimeWorkingController(DBContext dbContext) : ControllerBase
             DayOfWeek = timeWorking.DayOfWeek,
             StartTime = timeWorking.StartTime,
             EndTime = timeWorking.EndTime,
-            Status = timeWorking.Status.ToString(),
+            Status = timeWorking.Status,
             CreatedAt = timeWorking.CreatedAt,
             UpdatedAt = timeWorking.UpdatedAt
         };
@@ -134,7 +134,7 @@ public sealed class TimeWorkingController(DBContext dbContext) : ControllerBase
             DayOfWeek = timeWorking.DayOfWeek,
             StartTime = timeWorking.StartTime,
             EndTime = timeWorking.EndTime,
-            Status = timeWorking.Status.ToString(),
+            Status = timeWorking.Status,
             CreatedAt = timeWorking.CreatedAt,
             UpdatedAt = timeWorking.UpdatedAt
         };
