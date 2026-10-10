@@ -45,5 +45,6 @@ obj/
 bin/
 Migrations/
 
+.vs/
 # Next.js
 package-lock.json

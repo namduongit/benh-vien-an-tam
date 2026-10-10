@@ -1,3 +1,4 @@
+
 namespace api.Model.Enum;
 
 public enum AppointmentStatus
