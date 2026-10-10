@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarClock, Check, FilePenLine, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { CalendarClock, Check, FilePenLine, Pencil, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { mockDoctorWorkings } from "@/data/mocks/doctor-workings";
 import { mockHospitalWorkings } from "@/data/mocks/hospital-workings";
@@ -12,44 +12,150 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  adminTimeWorkingService,
+  type AdminTimeWorkingItem,
+} from "@/lib/services/time-working/AdminTimeWorkingService";
+import { BaseStatus, type TimeWorking } from "@/types/models";
 
 const dayNames = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
 export function TimeWorkingCatalogScreen() {
-  const [workings, setWorkings] = useState(mockTimeWorkings);
+  const [workings, setWorkings] = useState<TimeWorking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [editing, setEditing] = useState<TimeWorking | null>(null);
   const [visibility, setVisibility] = useState<"current" | "deleted">("current");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    adminTimeWorkingService.getAll(controller.signal)
+      .then((response) => {
+        if (!active) return;
+        setWorkings((response.data ?? response.Data ?? []).map(mapTimeWorking));
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        console.error("Lỗi khi tải khung giờ làm việc:", requestError);
+        setError("Không tải được danh sách khung giờ làm việc");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  async function saveWorking(value: ScheduleFormValue) {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const payload = {
+        dayOfWeek: value.dayOfWeek,
+        startTime: value.startTime,
+        endTime: value.endTime,
+        status: BaseStatus.Active,
+      };
+      const response = editing
+        ? await adminTimeWorkingService.update(editing.Uuid, payload)
+        : await adminTimeWorkingService.create(payload);
+      const saved = response.data ?? response.Data;
+      if (!saved) throw new Error("API không trả về khung giờ đã lưu");
+      const mapped = mapTimeWorking(saved);
+      setWorkings((current) => (editing
+        ? current.map((item) => item.Uuid === mapped.Uuid ? mapped : item)
+        : [...current, mapped]).sort(compareTimeWorking));
+      setEditing(null);
+    } catch (requestError) {
+      console.error("Không thể lưu khung giờ:", requestError);
+      setError("Không thể lưu khung giờ. Khung giờ có thể đã tồn tại hoặc giờ kết thúc không hợp lệ.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function toggleDeleted(working: TimeWorking) {
+    if (submitting) return;
+    const deleted = working.DeletedAt.getTime() === 0;
+    if (!window.confirm(`${deleted ? "Xóa" : "Khôi phục"} khung giờ này?`)) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (deleted) await adminTimeWorkingService.delete(working.Uuid);
+      else await adminTimeWorkingService.restore(working.Uuid);
+      const now = new Date();
+      setWorkings((current) => current.map((item) => item.Uuid === working.Uuid
+        ? { ...item, DeletedAt: deleted ? now : new Date(0), UpdatedAt: now }
+        : item));
+    } catch (requestError) {
+      console.error("Không thể thay đổi khung giờ:", requestError);
+      setError(`Không thể ${deleted ? "xóa" : "khôi phục"} khung giờ.`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const visibleWorkings = workings.filter((working) => visibility === "deleted" ? working.DeletedAt.getTime() > 0 : working.DeletedAt.getTime() === 0);
   const rows = visibleWorkings.map((working) => [
     dayNames[working.DayOfWeek],
     working.StartTime,
     working.EndTime,
     working.DeletedAt.getTime() > 0 ? <StatusPill key={`${working.Uuid}-status`} tone="red">Đã xóa</StatusPill> : <StatusPill key={`${working.Uuid}-status`} tone="green">Hoạt động</StatusPill>,
-    <Button key={`${working.Uuid}-action`} type="button" size="sm" variant={working.DeletedAt.getTime() > 0 ? "outline" : "destructive"} onClick={() => setWorkings((current) => current.map((item) => item.Uuid === working.Uuid ? { ...item, DeletedAt: working.DeletedAt.getTime() > 0 ? new Date(0) : new Date(), UpdatedAt: new Date() } : item))}>{working.DeletedAt.getTime() > 0 ? <><RotateCcw />Khôi phục</> : <><Trash2 />Xóa</>}</Button>,
+    <div key={`${working.Uuid}-actions`} className="flex gap-1">
+      {working.DeletedAt.getTime() === 0 ? <Button type="button" size="icon-sm" variant="ghost" disabled={submitting} aria-label="Sửa khung giờ" onClick={() => setEditing(working)}><Pencil /></Button> : null}
+      <Button type="button" size="sm" disabled={submitting} variant={working.DeletedAt.getTime() > 0 ? "outline" : "destructive"} onClick={() => void toggleDeleted(working)}>{working.DeletedAt.getTime() > 0 ? <><RotateCcw />Khôi phục</> : <><Trash2 />Xóa</>}</Button>
+    </div>,
   ]);
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Đang tải...</div>;
 
   return (
     <div className="space-y-6">
-      <PortalPageHeader eyebrow="Danh mục lịch dùng chung" title="Khung giờ làm việc" description="Tạo các khung giờ chuẩn để gán cho bác sĩ, bệnh viện và dịch vụ." actions={<PortalAction variant="default"><Plus />Thêm khung giờ</PortalAction>} />
+      <PortalPageHeader eyebrow="Danh mục lịch dùng chung" title="Khung giờ làm việc" description="Tạo các khung giờ chuẩn để gán cho bác sĩ, bệnh viện và dịch vụ."/>
+      {error ? <p role="alert" className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       <PortalSection title="Danh sách khung giờ" description={`${workings.length} khung giờ đang hoạt động`}>
         <div className="flex justify-end border-b p-4"><select value={visibility} onChange={(event) => setVisibility(event.target.value as "current" | "deleted")} className="h-9 rounded-md border bg-white px-3 text-sm"><option value="current">Khung giờ hiện hành</option><option value="deleted">Đã xóa</option></select></div>
         <PortalTable caption="Danh sách khung giờ làm việc" columns={["Ngày", "Bắt đầu", "Kết thúc", "Trạng thái", "Thao tác"]} rows={rows} />
       </PortalSection>
       <ScheduleForm
-        title="Tạo khung giờ mới"
-        submitLabel="Lưu khung giờ"
-        onSubmit={({ dayOfWeek, startTime, endTime }) => setWorkings((current) => [...current, {
-          Uuid: crypto.randomUUID(),
-          DayOfWeek: dayOfWeek,
-          StartTime: startTime,
-          EndTime: endTime,
-          Status: mockTimeWorkings[0].Status,
-          CreatedAt: new Date(),
-          UpdatedAt: new Date(),
-          DeletedAt: new Date(0),
-        }])}
+        key={editing?.Uuid ?? "create-time-working"}
+        title={editing ? "Chỉnh sửa khung giờ" : "Tạo khung giờ mới"}
+        submitLabel={editing ? "Lưu thay đổi" : "Lưu khung giờ"}
+        initialValue={editing ? {
+          dayOfWeek: editing.DayOfWeek,
+          startTime: editing.StartTime,
+          endTime: editing.EndTime,
+        } : undefined}
+        submitting={submitting}
+        onCancel={editing ? () => setEditing(null) : undefined}
+        onSubmit={(value) => void saveWorking(value)}
       />
     </div>
   );
+}
+
+function mapTimeWorking(item: AdminTimeWorkingItem): TimeWorking {
+  return {
+    Uuid: item.uuid,
+    DayOfWeek: item.dayOfWeek,
+    StartTime: item.startTime.slice(0, 5),
+    EndTime: item.endTime.slice(0, 5),
+    Status: item.status,
+    CreatedAt: new Date(item.createdAt),
+    UpdatedAt: new Date(item.updatedAt),
+    DeletedAt: item.deletedAt ? new Date(item.deletedAt) : new Date(0),
+  };
+}
+
+function compareTimeWorking(left: TimeWorking, right: TimeWorking) {
+  return left.DayOfWeek - right.DayOfWeek || left.StartTime.localeCompare(right.StartTime);
 }
 
 export function DoctorWorkingScreen() {
@@ -190,7 +296,25 @@ function requestStatus(request: WorkingRequest) {
 
 type ScheduleFormValue = { dayOfWeek: number; startTime: string; endTime: string; reason: string; doctor: string };
 
-function ScheduleForm({ title, submitLabel, showReason = false, showDoctor = false, onSubmit }: { title: string; submitLabel: string; showReason?: boolean; showDoctor?: boolean; onSubmit: (value: ScheduleFormValue) => void }) {
+function ScheduleForm({
+  title,
+  submitLabel,
+  showReason = false,
+  showDoctor = false,
+  initialValue,
+  submitting = false,
+  onCancel,
+  onSubmit,
+}: {
+  title: string;
+  submitLabel: string;
+  showReason?: boolean;
+  showDoctor?: boolean;
+  initialValue?: Partial<ScheduleFormValue>;
+  submitting?: boolean;
+  onCancel?: () => void;
+  onSubmit: (value: ScheduleFormValue) => void;
+}) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -208,11 +332,11 @@ function ScheduleForm({ title, submitLabel, showReason = false, showDoctor = fal
     <PortalSection title={title} action={<CalendarClock className="size-5 text-primary" />}>
       <form onSubmit={handleSubmit} className="grid gap-5 p-5 sm:grid-cols-3">
         {showDoctor ? <div className="space-y-2 sm:col-span-3"><Label htmlFor={`${title}-doctor`}>Bác sĩ</Label><select id={`${title}-doctor`} name="doctor" className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option>BS. Nguyễn Hoàng Minh</option><option>BS. Phạm Ngọc Anh</option><option>BS. Trần Thanh Vũ</option></select></div> : null}
-        <div className="space-y-2"><Label htmlFor={`${title}-day`}>Ngày trong tuần</Label><select id={`${title}-day`} name="dayOfWeek" className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="1">Thứ Hai</option><option value="2">Thứ Ba</option><option value="3">Thứ Tư</option><option value="4">Thứ Năm</option><option value="5">Thứ Sáu</option><option value="6">Thứ Bảy</option></select></div>
-        <div className="space-y-2"><Label htmlFor={`${title}-start`}>Bắt đầu</Label><Input id={`${title}-start`} name="startTime" type="time" defaultValue="07:00" required /></div>
-        <div className="space-y-2"><Label htmlFor={`${title}-end`}>Kết thúc</Label><Input id={`${title}-end`} name="endTime" type="time" defaultValue="11:30" required /></div>
+        <div className="space-y-2"><Label htmlFor={`${title}-day`}>Ngày trong tuần</Label><select id={`${title}-day`} name="dayOfWeek" defaultValue={initialValue?.dayOfWeek ?? 1} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="0">Chủ Nhật</option><option value="1">Thứ Hai</option><option value="2">Thứ Ba</option><option value="3">Thứ Tư</option><option value="4">Thứ Năm</option><option value="5">Thứ Sáu</option><option value="6">Thứ Bảy</option></select></div>
+        <div className="space-y-2"><Label htmlFor={`${title}-start`}>Bắt đầu</Label><Input id={`${title}-start`} name="startTime" type="time" defaultValue={initialValue?.startTime ?? "07:00"} required /></div>
+        <div className="space-y-2"><Label htmlFor={`${title}-end`}>Kết thúc</Label><Input id={`${title}-end`} name="endTime" type="time" defaultValue={initialValue?.endTime ?? "11:30"} required /></div>
         {showReason ? <div className="space-y-2 sm:col-span-3"><Label htmlFor={`${title}-reason`}>Lý do thay đổi</Label><Textarea id={`${title}-reason`} name="reason" rows={3} placeholder="Mô tả lý do và thời gian muốn áp dụng" required /></div> : null}
-        <div className="sm:col-span-3"><Button type="submit"><Send />{submitLabel}</Button></div>
+        <div className="flex gap-2 sm:col-span-3">{onCancel ? <Button type="button" variant="outline" disabled={submitting} onClick={onCancel}>Hủy</Button> : null}<Button type="submit" disabled={submitting}><Send />{submitting ? "Đang lưu..." : submitLabel}</Button></div>
       </form>
     </PortalSection>
   );

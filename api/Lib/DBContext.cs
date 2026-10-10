@@ -138,6 +138,8 @@ public class DBContext : DbContext
             UpdatedAt = DateTime.UnixEpoch
         });
         modelBuilder.Entity<Permission>().HasData(PermissionSeed.Permissions);
+
+        modelBuilder.Entity<Hospital>().HasData(HospitalSeed.Hospitals);
     }
 
     private static void ConfigureOneToMany<TDependent, TPrincipal>(
