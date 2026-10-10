@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth/auth-provider";
+import { genderOptions } from "@/lib/auth/options";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/data-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -577,7 +578,11 @@ function ContextStep({
       <div className="mt-6 space-y-5">
         <div className="space-y-2">
           <Label htmlFor="booking-target">{getTargetLabel(type)}</Label>
-          <Select value={targetValue || null} onValueChange={(value) => value && onTargetChange(value)}>
+          <Select
+            items={targets.map((item) => ({ value: item.Uuid, label: item.Name }))}
+            value={targetValue || null}
+            onValueChange={(value) => value && onTargetChange(value)}
+          >
             <SelectTrigger id="booking-target" className="h-11 w-full">
               <SelectValue placeholder={`Chọn ${getTargetLabel(type).toLocaleLowerCase("vi-VN")}`} />
             </SelectTrigger>
@@ -598,7 +603,13 @@ function ContextStep({
         {type === "medical-service" && selectedService ? (
           <div className="space-y-2">
             <Label htmlFor="booking-hospital">Cơ sở thực hiện</Label>
-            <Select value={hospitalValue || null} onValueChange={(value) => value && onHospitalChange(value)}>
+            <Select
+              items={context.Hospitals
+                .filter((item) => validHospitalUuids.has(item.Uuid))
+                .map((item) => ({ value: item.Uuid, label: item.Name }))}
+              value={hospitalValue || null}
+              onValueChange={(value) => value && onHospitalChange(value)}
+            >
               <SelectTrigger id="booking-hospital" className="h-11 w-full">
                 <SelectValue placeholder="Chọn cơ sở thực hiện" />
               </SelectTrigger>
@@ -778,6 +789,7 @@ function PatientStep({
         <div className="space-y-2">
           <Label htmlFor="appointment-patient-gender">Giới tính</Label>
           <Select
+            items={genderOptions}
             value={gender || null}
             onValueChange={(value) => onGenderChange((value as Gender) || "")}
           >
@@ -785,9 +797,11 @@ function PatientStep({
               <SelectValue placeholder="Chọn giới tính" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={Gender.Male}>Nam</SelectItem>
-              <SelectItem value={Gender.Female}>Nữ</SelectItem>
-              <SelectItem value={Gender.Other}>Khác</SelectItem>
+              {genderOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

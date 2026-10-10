@@ -58,6 +58,39 @@ export type CreateAppointmentRequest =
   | DoctorBookingRequest
   | MedicalServiceBookingRequest;
 
+export type WalkInAppointmentRequest = {
+  Type: BookingType;
+  HospitalUuid: string;
+  TargetUuid: string;
+  PatientName: string;
+  Gender: string;
+  Phone: string;
+  Birthdate: string;
+  MedicalCode: string;
+  Note: string;
+  AppointmentAt: string;
+};
+
+export type WalkInHospitalBookingRequest = Omit<
+  WalkInAppointmentRequest,
+  "Type" | "TargetUuid"
+>;
+
+export type WalkInDoctorBookingRequest = WalkInAppointmentRequest & {
+  Type: "doctor";
+  DoctorUuid: string;
+};
+
+export type WalkInMedicalServiceBookingRequest = WalkInAppointmentRequest & {
+  Type: "medical-service";
+  MedicalServiceUuid: string;
+};
+
+export type CreateWalkInAppointmentRequest =
+  | (WalkInAppointmentRequest & { Type: "hospital" })
+  | WalkInDoctorBookingRequest
+  | WalkInMedicalServiceBookingRequest;
+
 type AppointmentViewBase = {
   Uuid: string;
   PatientName: string;
@@ -69,6 +102,8 @@ type AppointmentViewBase = {
   AccountUuid: string;
   HospitalUuid: string;
   RoomUuid: string;
+  IsWalkIn: boolean;
+  GuestPhone: string | null;
   CreatedAt: Date;
   UpdatedAt: Date;
 };

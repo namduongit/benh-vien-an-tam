@@ -82,6 +82,10 @@ export function DiscoveryFilters({
         <div key={filter.key} className="space-y-2">
           <Label htmlFor={id}>{filter.label}</Label>
           <Select
+            items={[
+              { value: allValue, label: filter.allLabel },
+              ...filter.options,
+            ]}
             value={values[filter.key] || allValue}
             onValueChange={(value) =>
               setValues((current) => ({

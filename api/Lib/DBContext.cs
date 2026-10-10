@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using api.Config;
 using api.Data.Seed;
 using api.Model;
 
@@ -127,16 +126,7 @@ public class DBContext : DbContext
         ConfigureOneToMany<HospitalWorking, TimeWorking>(modelBuilder, nameof(HospitalWorking.WorkingUuid));
         ConfigureOneToMany<ServiceWorking, MedicalService>(modelBuilder, nameof(ServiceWorking.ServiceUuid));
         ConfigureOneToMany<ServiceWorking, TimeWorking>(modelBuilder, nameof(ServiceWorking.WorkingUuid));
-
-        modelBuilder.Entity<Role>().HasData(new Role
-        {
-            Uuid = AuthConstants.PatientRoleUuid,
-            Name = AuthConstants.PatientRoleName,
-            Description = "Tai khoan nguoi benh",
-            Status = api.Model.Enum.BaseStatus.Active,
-            CreatedAt = DateTime.UnixEpoch,
-            UpdatedAt = DateTime.UnixEpoch
-        });
+        
         modelBuilder.Entity<Permission>().HasData(PermissionSeed.Permissions);
 
         modelBuilder.Entity<Hospital>().HasData(HospitalSeed.Hospitals);

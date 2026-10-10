@@ -1,8 +1,10 @@
 using System.Text;
-using api.Config;
+using System.Text.Json.Serialization;
 using api.Lib;
 using api.Lib.Setting;
+using api.Middleware;
 using api.Service;
+using api.Service.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -12,28 +14,22 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
-    });
+builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-// Config Momo
-builder.Services.Configure<MomoSetting>(
-    builder.Configuration.GetSection("MomoConfiguration")
-);
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins(builder.Configuration["FrontendUrl"] ?? "http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials());
+});
 
-// Config Jwt
-builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
-    .Validate(options => options.SecretKey.Length >= 32, "Jwt:SecretKey must contain at least 32 characters.")
-    .Validate(options => options.AccessTokenMinutes > 0, "Jwt:AccessTokenMinutes must be greater than zero.")
-    .Validate(options => options.RefreshTokenDays > 0, "Jwt:RefreshTokenDays must be greater than zero.")
-    .ValidateOnStart();
+// Config Momo  & Jwt
+builder.Services.Configure<MomoSetting>(builder.Configuration.GetSection("MomoConfiguration"));
+builder.Services.Configure<JwtSetting>(builder.Configuration.GetSection("Jwt"));
 
-var jwtOptions = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>() ?? new JwtOptions();
+var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtSetting>() ?? new JwtSetting();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -57,9 +53,12 @@ builder.Services
             }
         };
     });
+    
 builder.Services.AddAuthorization();
+
 builder.Services.AddSingleton<PasswordHasher>();
-builder.Services.AddSingleton<JwtService>();
+builder.Services.AddSingleton<Jwt>();
+
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HospitalService>();
 builder.Services.AddScoped<DepartmentService>();

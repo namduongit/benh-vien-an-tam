@@ -11,6 +11,8 @@ import { MobileNavigation } from "@/components/layout/mobile-navigation";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/toast/toast-context";
+import { AuthServiceError } from "@/lib/services/auth/AuthService";
 import {
   isNavigationItemActive,
   patientNavigation,
@@ -23,6 +25,7 @@ export function SiteHeader() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const toast = useToast();
   const isAuthenticated = Boolean(session);
   const mobileItems = isAuthenticated
     ? [...publicNavigation, ...patientNavigation]
@@ -32,9 +35,17 @@ export function SiteHeader() {
     setIsLoggingOut(true);
     try {
       await logout();
+      toast.success("Đăng xuất thành công");
+    } catch (error) {
+      toast.error(
+        "Không thể đăng xuất trên máy chủ",
+        error instanceof AuthServiceError
+          ? error.message
+          : "Phiên đăng nhập trên thiết bị đã được xóa.",
+      );
+    } finally {
       router.push("/");
       router.refresh();
-    } finally {
       setIsLoggingOut(false);
     }
   }

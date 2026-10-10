@@ -8,8 +8,20 @@ import {
 const patientUuid = "c8067404-5a51-4a83-a4e5-d6a7d7508a12";
 const notDeleted = new Date(0);
 
+function createAppointment(
+  data: Omit<Appointment, "IsWalkIn" | "GuestPhone" | "DeletedAt">,
+): Appointment {
+  return { ...data, IsWalkIn: false, GuestPhone: null, DeletedAt: notDeleted } as Appointment;
+}
+
+function createWalkInAppointment(
+  data: Omit<Appointment, "DeletedAt">,
+): Appointment {
+  return { ...data, DeletedAt: notDeleted } as Appointment;
+}
+
 export const mockAppointments: Appointment[] = [
-  {
+  createAppointment({
     Uuid: "b403f8b3-05aa-4368-a65f-fc57985c5101",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -30,9 +42,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: false,
     CreatedAt: new Date("2026-09-20T02:00:00.000Z"),
     UpdatedAt: new Date("2026-09-20T02:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "b403f8b3-05aa-4368-a65f-fc57985c5102",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -53,9 +64,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: false,
     CreatedAt: new Date("2026-09-18T02:00:00.000Z"),
     UpdatedAt: new Date("2026-09-19T02:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "b403f8b3-05aa-4368-a65f-fc57985c5103",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -76,9 +86,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: true,
     CreatedAt: new Date("2026-09-05T02:00:00.000Z"),
     UpdatedAt: new Date("2026-09-10T04:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "7c37f250-817a-49b6-9f91-ce295c295201",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -99,9 +108,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: false,
     CreatedAt: new Date("2026-09-20T03:00:00.000Z"),
     UpdatedAt: new Date("2026-09-20T03:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "7c37f250-817a-49b6-9f91-ce295c295202",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -122,9 +130,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: true,
     CreatedAt: new Date("2026-09-12T03:00:00.000Z"),
     UpdatedAt: new Date("2026-09-18T04:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "b11f09d8-d40e-4576-a4f0-eb8d8c7b5301",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -145,9 +152,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: false,
     CreatedAt: new Date("2026-09-20T01:00:00.000Z"),
     UpdatedAt: new Date("2026-09-20T01:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "b11f09d8-d40e-4576-a4f0-eb8d8c7b5302",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -168,9 +174,8 @@ export const mockAppointments: Appointment[] = [
     IsPaid: false,
     CreatedAt: new Date("2026-09-15T01:00:00.000Z"),
     UpdatedAt: new Date("2026-09-16T01:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
-  {
+  }),
+  createAppointment({
     Uuid: "b11f09d8-d40e-4576-a4f0-eb8d8c7b5303",
     PatientName: "Nguyễn An",
     Gender: Gender.Male,
@@ -191,6 +196,30 @@ export const mockAppointments: Appointment[] = [
     IsPaid: true,
     CreatedAt: new Date("2026-09-07T01:00:00.000Z"),
     UpdatedAt: new Date("2026-09-12T02:00:00.000Z"),
-    DeletedAt: notDeleted,
-  },
+  }),
+  // Một vài lịch khách vãng lai mẫu để nhân viên tiếp nhận làm quen với luồng.
+  createWalkInAppointment({
+    Uuid: "f5d77a11-9a8b-4cb5-bb6d-1b9c4d77c701",
+    PatientName: "Phạm Thanh Tùng",
+    Gender: Gender.Male,
+    MedicalCode: "KH-220001",
+    Note: "Khách vãng lai đến trực tiếp, đau đầu kéo dài 3 ngày.",
+    StartTime: new Date("2026-10-05T09:00:00+07:00"),
+    AppointmentDate: new Date("2026-10-05T00:00:00+07:00"),
+    TimeSlot: "30000000-0000-4000-8000-000000000003",
+    Type: AppointmentType.Doctor,
+    Status: AppointmentStatus.Pending,
+    PatientUuid: null,
+    HospitalUuid: "a4a0a61f-577d-48cb-94b9-c9ce85554b11",
+    DoctorUuid: "57479ec8-29e0-44af-a8b0-15041655c5b8",
+    MedicalServiceUuid: null,
+    RoomUuid: null,
+    DoctorNote: "",
+    TotalPrice: 350000,
+    IsPaid: false,
+    IsWalkIn: true,
+    GuestPhone: "0938123456",
+    CreatedAt: new Date("2026-10-02T01:00:00.000Z"),
+    UpdatedAt: new Date("2026-10-02T01:00:00.000Z"),
+  }),
 ];

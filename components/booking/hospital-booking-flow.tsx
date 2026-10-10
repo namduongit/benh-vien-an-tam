@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth/auth-provider";
+import { genderOptions } from "@/lib/auth/options";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/data-state";
 import { SafeMarkdown } from "@/components/shared/safe-markdown";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -640,6 +641,7 @@ function BookingForm({
         <div className="space-y-2">
           <Label htmlFor="hospital-patient-gender">Giới tính</Label>
           <Select
+            items={genderOptions}
             value={gender || null}
             onValueChange={(value) => onGenderChange((value as Gender) || "")}
           >
@@ -647,9 +649,11 @@ function BookingForm({
               <SelectValue placeholder="Chọn giới tính" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={Gender.Male}>Nam</SelectItem>
-              <SelectItem value={Gender.Female}>Nữ</SelectItem>
-              <SelectItem value={Gender.Other}>Khác</SelectItem>
+              {genderOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -670,6 +674,10 @@ function BookingForm({
           <div className="space-y-2">
             <Label htmlFor="service-hospital">Cơ sở thực hiện</Label>
             <Select
+              items={hospitalOptions.map((hospital) => ({
+                value: hospital.Uuid,
+                label: hospital.Name,
+              }))}
               value={hospitalUuid || null}
               onValueChange={(value) => value && onHospitalChange(value)}
             >

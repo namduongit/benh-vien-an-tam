@@ -9,8 +9,7 @@ import type {
   LoginRequest,
   RegisterPatientRequest,
 } from "@/types/auth";
-import { BaseStatus, ROLE_UUIDS } from "@/types/models";
-import type { PatientProfile } from "@/types/models";
+import { BaseStatus, Gender, type PatientProfile } from "@/types/models";
 
 const sessionStorageKey = "an-tam-y-te.patient-session";
 const mockAccountHeader = "X-Mock-Account-Uuid";
@@ -35,15 +34,110 @@ export class AuthServiceError extends Error {
 }
 
 function toAuthError(error: unknown) {
+  if (error instanceof AuthServiceError) {
+    return error;
+  }
+
   if (axios.isAxiosError<AuthErrorResponse>(error)) {
+    const response = error.response?.data;
+    const errors = response?.Errors ?? response?.errors ?? {};
+    const fieldErrors = Object.fromEntries(
+      Object.entries(errors).map(([field, messages]) => [
+        field,
+        Array.isArray(messages) ? messages[0] : messages,
+      ]),
+    ) as Partial<Record<AuthField, string>>;
+
     return new AuthServiceError(
-      error.response?.data?.Message ??
+      response?.Message ??
+        response?.message ??
         "Không thể kết nối đến hệ thống. Vui lòng thử lại.",
-      error.response?.data?.Errors,
+      fieldErrors,
     );
   }
 
   return new AuthServiceError("Đã xảy ra lỗi. Vui lòng thử lại.");
+}
+
+type ApiEnvelope<T> = {
+  Data?: T;
+  data?: T;
+};
+
+type AuthProfileResponse =
+  | {
+      type: "patient";
+      uuid: string;
+      accountUuid: string;
+      avatar: string;
+      name: string;
+      gender: Gender | number;
+      birthdate: string;
+      medicalCode: string;
+      email: string;
+    }
+  | {
+      type: "doctor";
+    };
+
+type AuthSessionResponse = {
+  account: {
+    uuid: string;
+    phone: string;
+    roleUuid: string | null;
+    status: BaseStatus | number;
+    hospitalUuid: string | null;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt: string | null;
+  };
+  profile: AuthProfileResponse;
+};
+
+function mapSession(response: AuthSessionResponse): AuthSession {
+  const { account, profile } = response;
+
+  if (profile.type !== "patient") {
+    throw new AuthServiceError(
+      "Tài khoản này không thuộc cổng dành cho người bệnh.",
+    );
+  }
+
+  return {
+    Account: {
+      Uuid: account.uuid,
+      Phone: account.phone,
+      RoleUuid: account.roleUuid ?? "",
+      Status: mapBaseStatus(account.status),
+      HospitalUuid: account.hospitalUuid,
+      CreatedAt: new Date(account.createdAt),
+      UpdatedAt: new Date(account.updatedAt),
+      DeletedAt: account.deletedAt ? new Date(account.deletedAt) : new Date(0),
+    },
+    PatientProfile: {
+      Uuid: profile.uuid,
+      AccountUuid: profile.accountUuid,
+      Avatar: profile.avatar,
+      Name: profile.name,
+      Gender: mapGender(profile.gender),
+      Birthdate: new Date(profile.birthdate),
+      MedicalCode: profile.medicalCode,
+      Email: profile.email,
+    },
+  };
+}
+
+function mapBaseStatus(status: BaseStatus | number): BaseStatus {
+  if (status === 0) return BaseStatus.Active;
+  if (status === 1) return BaseStatus.InActive;
+  return status as BaseStatus;
+}
+
+function mapGender(gender: Gender | number): Gender {
+  if (gender === 0) return Gender.Other;
+  if (gender === 1) return Gender.Male;
+  if (gender === 2) return Gender.Female;
+  return gender as Gender;
 }
 
 function hydrateSession(value: string): AuthSession | null {
@@ -51,7 +145,6 @@ function hydrateSession(value: string): AuthSession | null {
     const session = JSON.parse(value) as AuthSession;
 
     if (
-      session.Account.RoleUuid !== ROLE_UUIDS.PATIENT ||
       session.Account.Status !== BaseStatus.Active ||
       !session.Account.Uuid ||
       !session.PatientProfile?.Uuid
@@ -79,11 +172,14 @@ function hydrateSession(value: string): AuthSession | null {
 export class AuthService {
   async login(credentials: LoginRequest): Promise<AuthSession> {
     try {
-      const response = await httpClient.post<ApiResponse<AuthSession>>(
-        "/auth/login",
-        credentials,
-      );
-      const session = response.data.Data;
+      const response = await httpClient.post<
+        ApiEnvelope<AuthSessionResponse> | ApiResponse<AuthSession>
+      >("/auth/login", credentials);
+      const payload = "data" in response.data ? response.data.data : response.data.Data;
+      if (!payload) {
+        throw new AuthServiceError("Dữ liệu phiên đăng nhập không hợp lệ.");
+      }
+      const session = "account" in payload ? mapSession(payload) : payload;
 
       localStorage.setItem(sessionStorageKey, JSON.stringify(session));
       setMockAccountHeader(session.Account.Uuid);
@@ -122,6 +218,8 @@ export class AuthService {
   async logout(): Promise<void> {
     try {
       await httpClient.post<ApiResponse<null>>("/auth/logout");
+    } catch (error) {
+      throw toAuthError(error);
     } finally {
       localStorage.removeItem(sessionStorageKey);
       setMockAccountHeader();

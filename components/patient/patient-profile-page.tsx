@@ -4,6 +4,7 @@ import { LoaderCircle, UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { useAuth } from "@/components/auth/auth-provider";
+import { genderOptions } from "@/lib/auth/options";
 import { ErrorState, LoadingState } from "@/components/shared/data-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -207,12 +208,12 @@ function ProfileEditor({
             <Input id="profile-name" autoComplete="name" value={name} disabled={isSubmitting} aria-invalid={Boolean(errors.Name)} aria-describedby={errors.Name ? "profile-name-error" : undefined} onChange={(event) => setName(event.target.value)} />
           </ProfileField>
           <ProfileField htmlFor="profile-gender" label="Giới tính" error={errors.Gender}>
-            <Select value={gender} disabled={isSubmitting} onValueChange={(value) => setGender(value as Gender)}>
+            <Select items={genderOptions} value={gender} disabled={isSubmitting} onValueChange={(value) => setGender(value as Gender)}>
               <SelectTrigger id="profile-gender" className="w-full" aria-invalid={Boolean(errors.Gender)} aria-describedby={errors.Gender ? "profile-gender-error" : undefined}><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={Gender.Female}>Nữ</SelectItem>
-                <SelectItem value={Gender.Male}>Nam</SelectItem>
-                <SelectItem value={Gender.Other}>Khác</SelectItem>
+                {genderOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </ProfileField>

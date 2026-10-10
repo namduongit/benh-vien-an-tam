@@ -44,3 +44,6 @@ next-env.d.ts
 obj/
 bin/
 Migrations/
+
+# Next.js
+package-lock.json

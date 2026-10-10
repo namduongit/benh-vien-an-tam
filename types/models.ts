@@ -141,6 +141,11 @@ export type HospitalMedicalService = {
   MedicalServiceUuid: Guid;
 };
 
+export type HospitalAssignmentSelection = {
+  DepartmentUuids: Guid[];
+  MedicalServiceUuids: Guid[];
+};
+
 export type ReviewHospital = {
   Uuid: Guid;
   Content: string;
@@ -311,6 +316,8 @@ export type PrescriptionDetail = {
 export enum AppointmentStatus {
   Pending = "Pending",
   Approved = "Approved",
+  Unconfirmed = "Unconfirmed",
+  CheckedIn = "CheckedIn",
   Done = "Done",
   Cancelled = "Cancelled",
 }
@@ -331,12 +338,14 @@ type AppointmentBase = {
   AppointmentDate: Date;
   TimeSlot: Guid;
   Status: AppointmentStatus;
-  PatientUuid: Guid;
+  PatientUuid: Guid | null;
   HospitalUuid: Guid;
   RoomUuid: Guid | null;
   DoctorNote: string;
   TotalPrice: number;
   IsPaid: boolean;
+  IsWalkIn: boolean;
+  GuestPhone: string | null;
   CreatedAt: Date;
   UpdatedAt: Date;
   DeletedAt: Date;
@@ -364,7 +373,14 @@ export type AppointmentMedicalService = {
   AppointmentUuid: Guid;
   MedicalServiceUuid: Guid;
   Price: number;
+  Description: string;
+  Status: AppointmentMedicalServiceStatus;
 };
+
+export enum AppointmentMedicalServiceStatus {
+  InProgress = "InProgress",
+  Completed = "Completed",
+}
 
 export enum PermissionAction {
   Read = "Read",

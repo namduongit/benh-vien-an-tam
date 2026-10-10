@@ -1,12 +1,12 @@
 import type AxiosMockAdapter from "axios-mock-adapter";
 
-import { mockHospitalMedicalServices } from "@/data/mocks/hospital-medical-services";
 import { mockHospitals } from "@/data/mocks/hospitals";
 import {
   featuredMedicalServices,
   mockMedicalServices,
 } from "@/data/mocks/medical-services";
 import { mockReviewMedicalServices } from "@/data/mocks/review-medical-services";
+import { getHospitalAssignments } from "@/lib/mocks/hospital-assignments";
 import {
   getPositiveIntegerParam,
   getStringParam,
@@ -29,12 +29,14 @@ export function registerMedicalServiceRoutes(mock: AxiosMockAdapter) {
     const items = mockMedicalServices.filter(
       (service) =>
         service.Status === BaseStatus.Active &&
-        matchesKeyword(q, service.Name, service.Description) &&
+        matchesKeyword(
+          getStringParam(config.params, "search") || q,
+          service.Name,
+          service.Description,
+        ) &&
         (!hospital ||
-          mockHospitalMedicalServices.some(
-            (relation) =>
-              relation.MedicalServiceUuid === service.Uuid &&
-              relation.HospitalUuid === hospital,
+          getHospitalAssignments(hospital).MedicalServiceUuids.includes(
+            service.Uuid,
           )),
     );
 
@@ -60,9 +62,15 @@ export function registerMedicalServiceRoutes(mock: AxiosMockAdapter) {
       }
 
       const hospitalUuids = new Set(
-        mockHospitalMedicalServices
-          .filter((relation) => relation.MedicalServiceUuid === service.Uuid)
-          .map((relation) => relation.HospitalUuid),
+        mockHospitals
+          .filter(
+            (hospital) =>
+              hospital.Status === BaseStatus.Active &&
+              getHospitalAssignments(hospital.Uuid).MedicalServiceUuids.includes(
+                service.Uuid,
+              ),
+          )
+          .map((hospital) => hospital.Uuid),
       );
 
       return [
