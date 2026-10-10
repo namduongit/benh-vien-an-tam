@@ -1,10 +1,9 @@
 using api.Contract.Clinical;
-using api.Lib;
 
 namespace api.Service.Interfaces;
 
 public interface IPrescriptionManagementService
 {
-    Task<ApiResponse<PrescriptionResponse>?> GetPrescriptionAsync(Guid appointmentUuid, CancellationToken cancellationToken);
-    Task<ApiResponse<PrescriptionResponse>> SavePrescriptionAsync(Guid doctorUuid, Guid appointmentUuid, SavePrescriptionRequest request, CancellationToken cancellationToken);
+    Task<PrescriptionResponse?> GetPrescriptionAsync(Guid appointmentUuid, CancellationToken cancellationToken);
+    Task<(PrescriptionResponse? Data, string? ErrorMessage, int StatusCode)> SavePrescriptionAsync(Guid doctorUuid, Guid appointmentUuid, SavePrescriptionRequest request, CancellationToken cancellationToken);
 }

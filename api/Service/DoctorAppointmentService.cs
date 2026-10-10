@@ -8,7 +8,7 @@ namespace api.Service;
 
 public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentService
 {
-    public async Task<ApiResponse<List<ClinicalAppointmentResponse>>> GetAppointmentsAsync(
+    public async Task<List<ClinicalAppointmentResponse>> GetAppointmentsAsync(
         Guid doctorUuid, string? date, CancellationToken cancellationToken)
     {
         var query = dbContext.Appointments
@@ -41,10 +41,10 @@ public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentS
             })
             .ToListAsync(cancellationToken);
 
-        return ApiResponse<List<ClinicalAppointmentResponse>>.Success(items, "Lấy danh sách ca khám thành công.");
+        return items;
     }
 
-    public async Task<ApiResponse<ClinicalCaseDetailResponse>?> GetAppointmentDetailAsync(
+    public async Task<ClinicalCaseDetailResponse?> GetAppointmentDetailAsync(
         Guid doctorUuid, Guid appointmentUuid, CancellationToken cancellationToken)
     {
         var appointment = await dbContext.Appointments
@@ -146,21 +146,25 @@ public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentS
             Prescription = prescription
         };
 
-        return ApiResponse<ClinicalCaseDetailResponse>.Success(response, "Lấy chi tiết ca khám thành công.");
+        return response;
     }
 
-    public async Task<ApiResponse<bool>> UpdateAppointmentStatusAsync(
+    /// <summary>
+    /// Cập nhật trạng thái ca khám. 
+    /// Trả về chuỗi thông báo lỗi (string) nếu thất bại, hoặc null nếu thành công.
+    /// </summary>
+    public async Task<string?> UpdateAppointmentStatusAsync(
         Guid doctorUuid, Guid appointmentUuid, string newStatus, CancellationToken cancellationToken)
     {
         var appointment = await dbContext.Appointments
             .Where(x => x.Uuid == appointmentUuid && x.DeletedAt == null && x.DoctorUuid == doctorUuid)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (appointment is null) return ApiResponse<bool>.Fail("Không tìm thấy ca khám.", 404);
+        if (appointment is null) return "Không tìm thấy ca khám.";
 
         if (!Enum.TryParse<AppointmentStatus>(newStatus, out var status))
         {
-            return ApiResponse<bool>.Fail("Trạng thái không hợp lệ.", 400);
+            return "Trạng thái không hợp lệ.";
         }
 
         // Nghiệp vụ kiểm tra khi hoàn thành ca khám
@@ -168,7 +172,7 @@ public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentS
         {
             if (string.IsNullOrWhiteSpace(appointment.DoctorNote))
             {
-                return ApiResponse<bool>.Fail("Vui lòng nhập thông tin chẩn đoán trước khi hoàn thành ca khám.", 400);
+                return "Vui lòng nhập thông tin chẩn đoán trước khi hoàn thành ca khám.";
             }
 
             var services = await dbContext.AppointmentMedicalServices
@@ -178,7 +182,7 @@ public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentS
             var allCompleted = services.All(s => s.Status == AppointmentMedicalServiceStatus.Completed && !string.IsNullOrWhiteSpace(s.Description));
             if (!allCompleted)
             {
-                return ApiResponse<bool>.Fail("Tất cả dịch vụ chỉ định phải ở trạng thái hoàn thành và có đầy đủ kết quả.", 400);
+                return "Tất cả dịch vụ chỉ định phải ở trạng thái hoàn thành và có đầy đủ kết quả.";
             }
         }
 
@@ -187,6 +191,6 @@ public class DoctorAppointmentService(DBContext dbContext) : IDoctorAppointmentS
         dbContext.Appointments.Update(appointment);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ApiResponse<bool>.Success(true, "Cập nhật trạng thái ca khám thành công.");
+        return null; // Thành công không có lỗi
     }
 }

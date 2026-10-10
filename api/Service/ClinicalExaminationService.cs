@@ -1,15 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using api.Contract.Clinical;
-using api.Lib;
 using api.Model;
 using api.Model.Enum;
 using api.Service.Interfaces;
+using api.Lib;
 
 namespace api.Service;
 
 public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminationService
 {
-    public async Task<ApiResponse<ClinicalMedicalServiceResponse>?> AddMedicalServiceAsync(
+    public async Task<ClinicalMedicalServiceResponse?> AddMedicalServiceAsync(
         Guid doctorUuid, Guid appointmentUuid, AddMedicalServiceRequest request, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(request.MedicalServiceUuid, out var serviceUuid))
@@ -39,7 +39,7 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
         dbContext.AppointmentMedicalServices.Add(appointmentMedicalService);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        var response = new ClinicalMedicalServiceResponse
+        return new ClinicalMedicalServiceResponse
         {
             Uuid = appointmentMedicalService.Uuid.ToString(),
             AppointmentUuid = appointmentMedicalService.AppointmentUuid?.ToString() ?? string.Empty,
@@ -49,11 +49,9 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
             Description = appointmentMedicalService.Description ?? string.Empty,
             Status = appointmentMedicalService.Status.ToString()
         };
-
-        return ApiResponse<ClinicalMedicalServiceResponse>.Success(response, "Thêm dịch vụ thành công.");
     }
 
-    public async Task<ApiResponse<ClinicalMedicalServiceResponse>?> UpdateMedicalServiceAsync(
+    public async Task<ClinicalMedicalServiceResponse?> UpdateMedicalServiceAsync(
         Guid doctorUuid, Guid appointmentUuid, Guid serviceUuid, UpdateMedicalServiceRequest request, CancellationToken cancellationToken)
     {
         var appointmentExists = await dbContext.Appointments
@@ -86,7 +84,7 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
             .Select(m => m.Name)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var response = new ClinicalMedicalServiceResponse
+        return new ClinicalMedicalServiceResponse
         {
             Uuid = appointmentMedicalService.Uuid.ToString(),
             AppointmentUuid = appointmentMedicalService.AppointmentUuid?.ToString() ?? string.Empty,
@@ -96,22 +94,18 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
             Description = appointmentMedicalService.Description,
             Status = appointmentMedicalService.Status.ToString()
         };
-
-        return ApiResponse<ClinicalMedicalServiceResponse>.Success(response, "Cập nhật dịch vụ thành công.");
     }
 
-    public async Task<ApiResponse<bool>> SaveDiagnosisAsync(
+    public async Task<bool> SaveDiagnosisAsync(
         Guid doctorUuid, Guid appointmentUuid, SaveDiagnosisRequest request, CancellationToken cancellationToken)
     {
         var appointment = await dbContext.Appointments
             .Where(x => x.Uuid == appointmentUuid && x.DeletedAt == null && x.DoctorUuid == doctorUuid)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (appointment is null) return ApiResponse<bool>.Fail("Không tìm thấy ca khám.", 404);
-
-        if (string.IsNullOrWhiteSpace(request.DoctorNote))
+        if (appointment is null || string.IsNullOrWhiteSpace(request.DoctorNote))
         {
-            return ApiResponse<bool>.Fail("Thông tin chẩn đoán không được để trống.", 400);
+            return false;
         }
 
         appointment.DoctorNote = request.DoctorNote;
@@ -120,10 +114,10 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
         dbContext.Appointments.Update(appointment);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ApiResponse<bool>.Success(true, "Lưu thông tin chẩn đoán thành công.");
+        return true;
     }
 
-    public async Task<ApiResponse<List<ClinicalMedicineOptionResponse>>> SearchMedicinesAsync(
+    public async Task<List<ClinicalMedicineOptionResponse>> SearchMedicinesAsync(
         string? keyword, CancellationToken cancellationToken)
     {
         var query = dbContext.Medicines
@@ -144,6 +138,6 @@ public class ClinicalExaminationService(DBContext dbContext) : IClinicalExaminat
             })
             .ToListAsync(cancellationToken);
 
-        return ApiResponse<List<ClinicalMedicineOptionResponse>>.Success(list, "Tìm kiếm thuốc thành công.");
+        return list;
     }
 }

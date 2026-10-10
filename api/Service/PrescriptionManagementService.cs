@@ -9,7 +9,7 @@ namespace api.Service;
 
 public class PrescriptionManagementService(DBContext dbContext) : IPrescriptionManagementService
 {
-    public async Task<ApiResponse<PrescriptionResponse>?> GetPrescriptionAsync(
+    public async Task<PrescriptionResponse?> GetPrescriptionAsync(
         Guid appointmentUuid, CancellationToken cancellationToken)
     {
         var prescription = await dbContext.Prescriptions
@@ -33,22 +33,20 @@ public class PrescriptionManagementService(DBContext dbContext) : IPrescriptionM
                     QuantityPerDose = pd.QuantityPerDose,
                     DosesPerDay = pd.DosesPerDay,
                     Duration = pd.Duration,
-                    Note = pd.Note
+                    Note = pd.Note ?? string.Empty
                 })
             .ToListAsync(cancellationToken);
 
-        var response = new PrescriptionResponse
+        return new PrescriptionResponse
         {
             Uuid = prescription.Uuid.ToString(),
             Status = prescription.Status.ToString(),
             Note = prescription.Note,
             Details = details
         };
-
-        return ApiResponse<PrescriptionResponse>.Success(response, "Lấy đơn thuốc thành công.");
     }
 
-    public async Task<ApiResponse<PrescriptionResponse>> SavePrescriptionAsync(
+    public async Task<(PrescriptionResponse? Data, string? ErrorMessage, int StatusCode)> SavePrescriptionAsync(
         Guid doctorUuid, Guid appointmentUuid, SavePrescriptionRequest request, CancellationToken cancellationToken)
     {
         var appointment = await dbContext.Appointments
@@ -56,7 +54,7 @@ public class PrescriptionManagementService(DBContext dbContext) : IPrescriptionM
             .FirstOrDefaultAsync(cancellationToken);
 
         if (appointment is null)
-            return ApiResponse<PrescriptionResponse>.Fail("Không tìm thấy ca khám.", 404);
+            return (null, "Không tìm thấy ca khám.", 404);
 
         var existingPrescription = await dbContext.Prescriptions
             .Where(p => p.AppointmentUuid == appointmentUuid && p.DeletedAt == null)
@@ -65,7 +63,7 @@ public class PrescriptionManagementService(DBContext dbContext) : IPrescriptionM
         // Nếu đơn thuốc đã thanh toán hoặc đã hủy thì không cho phép chỉnh sửa
         if (existingPrescription is not null && existingPrescription.Status != PrescriptionStatus.Unpaid)
         {
-            return ApiResponse<PrescriptionResponse>.Fail("Đơn thuốc đã thanh toán hoặc đã hủy, không thể chỉnh sửa.", 400);
+            return (null, "Đơn thuốc đã thanh toán hoặc đã hủy, không thể chỉnh sửa.", 400);
         }
 
         Prescription prescription;
@@ -113,14 +111,19 @@ public class PrescriptionManagementService(DBContext dbContext) : IPrescriptionM
                 Duration = item.Duration,
                 Price = medicine?.Price ?? 0,
                 IsExternal = false,
-                Note = item.Note
+                Note = item.Note ?? string.Empty
             };
             dbContext.PrescriptionDetails.Add(detail);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return await GetPrescriptionAsync(appointmentUuid, cancellationToken)
-               ?? ApiResponse<PrescriptionResponse>.Fail("Lưu đơn thuốc thất bại.", 500);
+        var updatedPrescription = await GetPrescriptionAsync(appointmentUuid, cancellationToken);
+        if (updatedPrescription is null)
+        {
+            return (null, "Lưu đơn thuốc thất bại.", 500);
+        }
+
+        return (updatedPrescription, null, 200);
     }
 }
