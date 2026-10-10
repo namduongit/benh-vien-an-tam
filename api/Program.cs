@@ -29,7 +29,7 @@ builder.Services.AddCors(options =>
             .AllowCredentials());
 });
 // Config Momo  & Jwt
-builder.Services.Configure<MomoSetting>(builder.Configuration.GetSection("MomoConfiguration"));
+builder.Services.Configure<SepaySetting>(builder.Configuration.GetSection("SepayConfiguration"));
 builder.Services.Configure<JwtSetting>(builder.Configuration.GetSection("Jwt"));
 
 var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtSetting>() ?? new JwtSetting();
@@ -59,11 +59,12 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddSingleton<PasswordHasher>();
-builder.Services.AddSingleton<Jwt>();
+builder.Services.AddScoped<PasswordHasher>();
+builder.Services.AddScoped<Jwt>();
 
 builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<Momo>();
+
+builder.Services.AddScoped<Sepay>();
 
 builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
 builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();

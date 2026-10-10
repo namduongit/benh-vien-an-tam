@@ -9,7 +9,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 export function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  if (pathname.startsWith("/noi-bo")) {
+  if (pathname.startsWith("/noi-bo") || pathname.startsWith("/gateway")) {
     return children;
   }
 

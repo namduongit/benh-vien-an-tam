@@ -12,16 +12,6 @@ import type {
 import { BaseStatus, Gender, type PatientProfile } from "@/types/models";
 
 const sessionStorageKey = "an-tam-y-te.patient-session";
-const mockAccountHeader = "X-Mock-Account-Uuid";
-
-function setMockAccountHeader(accountUuid?: string) {
-  if (process.env.NEXT_PUBLIC_USE_MOCK_API === "false") return;
-  if (accountUuid) {
-    httpClient.defaults.headers.common[mockAccountHeader] = accountUuid;
-  } else {
-    delete httpClient.defaults.headers.common[mockAccountHeader];
-  }
-}
 
 export class AuthServiceError extends Error {
   constructor(
@@ -62,6 +52,12 @@ function toAuthError(error: unknown) {
 type ApiEnvelope<T> = {
   Data?: T;
   data?: T;
+};
+
+type RegisterResultResponse = {
+  accountUuid: string | null;
+  patientProfileUuid: string | null;
+  email: string | null;
 };
 
 type AuthProfileResponse =
@@ -182,7 +178,6 @@ export class AuthService {
       const session = "account" in payload ? mapSession(payload) : payload;
 
       localStorage.setItem(sessionStorageKey, JSON.stringify(session));
-      setMockAccountHeader(session.Account.Uuid);
       return session;
     } catch (error) {
       throw toAuthError(error);
@@ -191,28 +186,46 @@ export class AuthService {
 
   async register(request: RegisterPatientRequest): Promise<void> {
     try {
-      await httpClient.post<ApiResponse<null>>("/auth/register", request);
+      await httpClient.post<ApiEnvelope<RegisterResultResponse>>(
+        "/auth/register",
+        request,
+      );
     } catch (error) {
       throw toAuthError(error);
     }
   }
 
   async getCurrentSession(): Promise<AuthSession | null> {
-    const storedSession = localStorage.getItem(sessionStorageKey);
-    if (!storedSession) {
-      setMockAccountHeader();
-      return null;
+    if (process.env.NEXT_PUBLIC_USE_MOCK_API !== "false") {
+      const storedSession = localStorage.getItem(sessionStorageKey);
+      if (!storedSession) return null;
+
+      const session = hydrateSession(storedSession);
+      if (!session) {
+        localStorage.removeItem(sessionStorageKey);
+      }
+      return session;
     }
 
-    const session = hydrateSession(storedSession);
-    if (!session) {
-      localStorage.removeItem(sessionStorageKey);
-      setMockAccountHeader();
-    } else {
-      setMockAccountHeader(session.Account.Uuid);
-    }
+    try {
+      const response = await httpClient.post<ApiEnvelope<AuthSessionResponse>>(
+        "/auth/refresh",
+      );
+      const payload = response.data.data ?? response.data.Data;
+      if (!payload) {
+        throw new AuthServiceError("Dữ liệu phiên đăng nhập không hợp lệ.");
+      }
 
-    return session;
+      const session = mapSession(payload);
+      localStorage.setItem(sessionStorageKey, JSON.stringify(session));
+      return session;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        localStorage.removeItem(sessionStorageKey);
+        return null;
+      }
+      throw toAuthError(error);
+    }
   }
 
   async logout(): Promise<void> {
@@ -222,7 +235,6 @@ export class AuthService {
       throw toAuthError(error);
     } finally {
       localStorage.removeItem(sessionStorageKey);
-      setMockAccountHeader();
     }
   }
 
