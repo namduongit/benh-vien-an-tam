@@ -1,10 +1,12 @@
+using System.ComponentModel.DataAnnotations;
 using api.Model.Enum;
 
 namespace api.Contract.Hospital;
 
 public sealed class UpdateRoomRequest
 {
-    public string Name { get; init; } = string.Empty;
+    [StringLength(100, MinimumLength = 1)]
+    public string? Name { get; init; }
 
     public RoomStatus? Status { get; init; }
 }

@@ -141,6 +141,11 @@ export type HospitalMedicalService = {
   MedicalServiceUuid: Guid;
 };
 
+export type HospitalAssignmentSelection = {
+  DepartmentUuids: Guid[];
+  MedicalServiceUuids: Guid[];
+};
+
 export type ReviewHospital = {
   Uuid: Guid;
   Content: string;
@@ -311,6 +316,8 @@ export type PrescriptionDetail = {
 export enum AppointmentStatus {
   Pending = "Pending",
   Approved = "Approved",
+  Unconfirmed = "Unconfirmed",
+  CheckedIn = "CheckedIn",
   Done = "Done",
   Cancelled = "Cancelled",
 }

@@ -63,11 +63,22 @@ builder.Services.AddScoped<PasswordHasher>();
 builder.Services.AddScoped<Jwt>();
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<HospitalService>();
+builder.Services.AddScoped<DepartmentService>();
+builder.Services.AddScoped<MedicineService>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<TimeWorkingService>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
-builder.Services.AddScoped<Sepay>();
-
-builder.Services.AddScoped<IAvailableMedicineService, AvailableMedicineService>();
-builder.Services.AddScoped<IDoctorProfileService, DoctorProfileService>();
 
 // Config Postges
 builder.Services.AddDbContext<DBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -82,10 +93,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-app.UseMiddleware<ExceptionHandler>();
-
-app.UseCors();
+app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 

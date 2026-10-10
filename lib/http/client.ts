@@ -12,6 +12,23 @@ export const httpClient = axios.create({
   },
 });
 
+httpClient.interceptors.response.use((response) => {
+  const body = response.data;
+
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const payload = body as Record<string, unknown>;
+
+    if (!("Data" in payload) && "data" in payload) {
+      payload.Data = payload.data;
+    }
+    if (!("Message" in payload) && "message" in payload) {
+      payload.Message = payload.message;
+    }
+  }
+
+  return response;
+});
+
 if (process.env.NEXT_PUBLIC_USE_MOCK_API !== "false") {
   attachMockApi(httpClient);
 } else {

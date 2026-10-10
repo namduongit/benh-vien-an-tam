@@ -161,6 +161,7 @@ function StaffRoomsScreen() {
         !appointment.RoomUuid ||
         appointment.DeletedAt.getTime() !== 0 ||
         appointment.Status === AppointmentStatus.Cancelled ||
+        appointment.Status === AppointmentStatus.Unconfirmed ||
         appointment.Status === AppointmentStatus.Done
       ) {
         continue;
