@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 
-import { authService } from "@/lib/services/auth/AuthService";
+import { useToast } from "@/components/toast/toast-context";
+import {
+  authService,
+  AuthServiceError,
+} from "@/lib/services/auth/AuthService";
 import type {
   AuthSession,
   LoginRequest,
@@ -32,6 +36,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { error: showError } = useToast();
   const [session, setSession] = useState<AuthSession | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(currentSession);
         }
       })
+      .catch((error: unknown) => {
+        if (active) {
+          showError(
+            "Không thể kiểm tra phiên đăng nhập",
+            error instanceof AuthServiceError
+              ? error.message
+              : "Đã xảy ra lỗi. Vui lòng thử lại.",
+          );
+        }
+      })
       .finally(() => {
         if (active) {
           setIsLoading(false);
@@ -56,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [showError]);
 
   async function login(credentials: LoginRequest) {
     const nextSession = await authService.login(credentials);

@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "vietqr.app",
+        port: "",
+        pathname: "/img",
+      },
+    ],
+  },
 };
 
 export default nextConfig;
