@@ -46,7 +46,7 @@ public sealed class DepartmentController(DBContext dbContext) : ControllerBase
                 Slug = x.Slug,
                 Name = x.Name,
                 Description = x.Description,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })
@@ -83,7 +83,7 @@ public sealed class DepartmentController(DBContext dbContext) : ControllerBase
             Slug = department.Slug,
             Name = department.Name,
             Description = department.Description,
-            Status = department.Status.ToString(),
+            Status = department.Status,
             CreatedAt = department.CreatedAt,
             UpdatedAt = department.UpdatedAt
         };
@@ -119,7 +119,7 @@ public sealed class DepartmentController(DBContext dbContext) : ControllerBase
             Slug = department.Slug,
             Name = department.Name,
             Description = department.Description,
-            Status = department.Status.ToString(),
+            Status = department.Status,
             CreatedAt = department.CreatedAt,
             UpdatedAt = department.UpdatedAt
         };
@@ -157,7 +157,7 @@ public sealed class DepartmentController(DBContext dbContext) : ControllerBase
             Slug = department.Slug,
             Name = department.Name,
             Description = department.Description,
-            Status = department.Status.ToString(),
+            Status = department.Status,
             CreatedAt = department.CreatedAt,
             UpdatedAt = department.UpdatedAt
         };

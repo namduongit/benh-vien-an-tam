@@ -22,7 +22,3 @@ public class DepartmentRequest
     [EnumDataType(typeof(BaseStatus))]
     public BaseStatus Status { get; init; } = BaseStatus.Active;
 }
-
-public sealed class CreateDepartmentRequest : DepartmentRequest;
-
-public sealed class UpdateDepartmentRequest : DepartmentRequest;

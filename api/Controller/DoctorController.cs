@@ -273,7 +273,7 @@ public sealed class DoctorController(DBContext dbContext) : ControllerBase
                 Slug = x.Slug,
                 Name = x.Name,
                 Description = x.Description,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })
@@ -368,7 +368,7 @@ public sealed class DoctorController(DBContext dbContext) : ControllerBase
                 DayOfWeek = x.DayOfWeek,
                 StartTime = x.StartTime,
                 EndTime = x.EndTime,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })

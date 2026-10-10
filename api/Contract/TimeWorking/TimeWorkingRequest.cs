@@ -15,7 +15,3 @@ public class TimeWorkingRequest
     [EnumDataType(typeof(BaseStatus))]
     public BaseStatus Status { get; init; } = BaseStatus.Active;
 }
-
-public sealed class CreateTimeWorkingRequest : TimeWorkingRequest;
-
-public sealed class UpdateTimeWorkingRequest : TimeWorkingRequest;

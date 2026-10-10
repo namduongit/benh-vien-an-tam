@@ -51,7 +51,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
                 Description = x.Description,
                 DetailService = x.DetailService,
                 WorkingHour = x.WorkingHour,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })
@@ -94,7 +94,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Description = hospital.Description,
             DetailService = hospital.DetailService,
             WorkingHour = hospital.WorkingHour,
-            Status = hospital.Status.ToString(),
+            Status = hospital.Status,
             CreatedAt = hospital.CreatedAt,
             UpdatedAt = hospital.UpdatedAt
         };
@@ -140,7 +140,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Description = hospital.Description,
             DetailService = hospital.DetailService,
             WorkingHour = hospital.WorkingHour,
-            Status = hospital.Status.ToString(),
+            Status = hospital.Status,
             CreatedAt = hospital.CreatedAt,
             UpdatedAt = hospital.UpdatedAt
         };
@@ -168,7 +168,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
         hospital.Slug = request.Slug ?? hospital.Slug;
         hospital.Name = request.Name ?? hospital.Name;
         hospital.Address = request.Address ?? hospital.Address;
-        hospital.NumberOfRoom = request.NumberOfRoom.HasValue ? request.NumberOfRoom.Value : hospital.NumberOfRoom;
+        hospital.NumberOfRoom = request.NumberOfRoom;
         hospital.Description = request.Description ?? hospital.Description;
         hospital.DetailService = request.DetailService ?? hospital.DetailService;
         hospital.WorkingHour = request.WorkingHour ?? hospital.WorkingHour;
@@ -188,7 +188,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
             Description = hospital.Description,
             DetailService = hospital.DetailService,
             WorkingHour = hospital.WorkingHour,
-            Status = hospital.Status.ToString(),
+            Status = hospital.Status,
             CreatedAt = hospital.CreatedAt,
             UpdatedAt = hospital.UpdatedAt
         };
@@ -239,7 +239,7 @@ public sealed class HospitalController(DBContext dbContext) : ControllerBase
                 Slug = x.Slug,
                 Name = x.Name,
                 Description = x.Description,
-                Status = x.Status.ToString(),
+                Status = x.Status,
                 CreatedAt = x.CreatedAt,
                 UpdatedAt = x.UpdatedAt
             })

@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text;
-using api.Config;
 using api.Contract.Hospital;
 using api.Lib;
 using api.Model;
