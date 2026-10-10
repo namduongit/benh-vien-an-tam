@@ -318,14 +318,66 @@ public sealed class AppointmentController(DBContext dbContext) : ControllerBase
         if (appointment is null)
             return NotFound(new { message = "Appointment not found", error = "Resource does not exist" });
 
-        if (appointment.Status != AppointmentStatus.Approved)
-            return BadRequest(new { message = "Invalid state", error = "Appointment must be in Approved status" });
+        if (appointment.Status != AppointmentStatus.CheckedIn)
+            return BadRequest(new { message = "Invalid state", error = "Appointment must be in CheckedIn status" });
+        if (!appointment.IsPaid)
+            return Conflict(new { message = "Appointment must be paid before completion", error = "PAYMENT_REQUIRED" });
+        if (await dbContext.AppointmentMedicalServices.AnyAsync(
+                item => item.AppointmentUuid == appointment.Uuid &&
+                        item.Status != AppointmentMedicalServiceStatus.Completed,
+                cancellationToken))
+            return Conflict(new { message = "All additional services must be completed first", error = "SERVICES_INCOMPLETE" });
 
         appointment.Status = AppointmentStatus.Done;
         appointment.DoctorNote = request.DoctorNote ?? appointment.DoctorNote;
-        appointment.IsPaid = true;
         appointment.UpdatedAt = DateTime.UtcNow;
 
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = new AppointmentResponse
+        {
+            Uuid = appointment.Uuid,
+            PatientName = appointment.PatientName,
+            Gender = appointment.Gender.ToString(),
+            MedicalCode = appointment.MedicalCode,
+            Note = appointment.Note,
+            AppointmentDate = appointment.AppointmentDate,
+            TimeSlot = appointment.TimeSlot,
+            Type = appointment.Type.ToString(),
+            Status = appointment.Status.ToString(),
+            PatientUuid = appointment.PatientUuid,
+            HospitalUuid = appointment.HospitalUuid,
+            DoctorUuid = appointment.DoctorUuid,
+            MedicalServiceUuid = appointment.MedicalServiceUuid,
+            RoomUuid = appointment.RoomUuid,
+            DoctorNote = appointment.DoctorNote,
+            TotalPrice = appointment.TotalPrice,
+            IsPaid = appointment.IsPaid,
+            CreatedAt = appointment.CreatedAt,
+            UpdatedAt = appointment.UpdatedAt
+        };
+
+        return Ok(new { message = "Updated successfully", data = response });
+    }
+
+    [HttpPut("{id}/check-in")]
+    [Authorize]
+    public async Task<IActionResult> CheckInAppointment(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var appointment = await dbContext.Appointments
+            .Where(x => x.Uuid == id && x.DeletedAt == null)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (appointment is null)
+            return NotFound(new { message = "Appointment not found", error = "Resource does not exist" });
+
+        if (appointment.Status != AppointmentStatus.Approved)
+            return BadRequest(new { message = "Invalid state", error = "Appointment must be in Approved status" });
+
+        appointment.Status = AppointmentStatus.CheckedIn;
+        appointment.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var response = new AppointmentResponse

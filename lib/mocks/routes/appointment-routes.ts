@@ -936,7 +936,8 @@ function isBlockingAppointment(appointment: Appointment, excludeUuid?: string) {
   return (
     appointment.Uuid !== excludeUuid &&
     appointment.DeletedAt.getTime() === 0 &&
-    appointment.Status !== AppointmentStatus.Cancelled
+    appointment.Status !== AppointmentStatus.Cancelled &&
+    appointment.Status !== AppointmentStatus.Unconfirmed
   );
 }
 
