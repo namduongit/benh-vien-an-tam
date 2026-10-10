@@ -128,6 +128,8 @@ public class DBContext : DbContext
         ConfigureOneToMany<ServiceWorking, TimeWorking>(modelBuilder, nameof(ServiceWorking.WorkingUuid));
         
         modelBuilder.Entity<Permission>().HasData(PermissionSeed.Permissions);
+
+        modelBuilder.Entity<Hospital>().HasData(HospitalSeed.Hospitals);
     }
 
     private static void ConfigureOneToMany<TDependent, TPrincipal>(
